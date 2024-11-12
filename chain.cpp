@@ -130,8 +130,6 @@ int main() {
 	std::cout << "Our Address: " << my_host << "\n";
 	std::cout << "Our Port: " << my_port << "\n";
 
-	std::cout << "HMM: " << boost::asio::ip::host_name() << "\n";
-
 	udp::resolver resolver{io_ctxt};
 	udp::endpoint silicon = *resolver.resolve({udp::v4(), "silicon.cs.umanitoba.ca", "8999"});
 
@@ -162,24 +160,8 @@ int main() {
 
 	std::cout << "Sent Gossip\n";
 
-	json gossip_reply;
-
-	// Should be in a loop in case there are more than 1024 characters sent
-	{
-		std::array<char, 1024> buf;
-		size_t len = us_sock.receive(boost::asio::buffer(buf));
-
-		std::cout.write(buf.data(), len);
-		std::cout << "\n" << len << "\n";
-
-		string resp{buf.data()};
-		gossip_reply = json::parse(resp.substr(0, len));
-	}
-
-	add_peer(gossip_reply["host"], gossip_reply["port"]);
-
-	// Now actually listen for gossips
-	std::cout << "Listening for Gossips\n";
+	// Wait a while to collect a list of peers
+	std::cout << "Listening for Peers\n";
 	while (true) {
 		std::array<char, 1024> buf;
 		udp::endpoint sender;
@@ -194,6 +176,8 @@ int main() {
 		json incoming = json::parse(resp.substr(0, len));
 		if (incoming["type"] == "GOSSIP") {
 			process_gossip(incoming.template get<Gossip>(), us_sock);
+		} else if (incoming["type"] == "GOSSIP_REPLY") {
+
 		}
 	}
 
