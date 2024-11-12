@@ -36,6 +36,14 @@ stamp_t get_timestamp() {
 	return duration_cast<milliseconds>(get_now().time_since_epoch()).count();
 }
 
+msg_id_t get_msg_id() {
+	return std::to_string(get_timestamp());
+}
+
+bool same_ep(const udp::endpoint& a, const udp::endpoint& b) {
+	return a.address() == b.address() && a.port() == b.port();
+}
+
 host_t my_host = "127.0.0.1";
 port_t my_port = 50000;
 name_t my_name = "Ben's Computer";
@@ -54,6 +62,8 @@ struct Gossip {
 	port_t port;
 	name_t name;
 	msg_id_t id;
+
+	Gossip() : host{my_host}, port{my_port}, name{my_name}, id{get_msg_id()} {}
 };
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Gossip, host, port, name, id)
@@ -133,15 +143,6 @@ void process_gossip(const Gossip& incoming, udp::socket& us_sock) {
 	}
 }
 
-Gossip make_gossip() {
-	return {
-		.host = my_host,
-		.port = my_port,
-		.name = my_name,
-		.id = std::to_string(get_timestamp())
-	};
-}
-
 // Fills sender with who we received the data from
 // Can receive up to 1024 characters at a time
 // Adds the sender to the list of peers
@@ -190,7 +191,7 @@ int main() {
 
 	std::cout << "Made Silicon Endpoint\n";
 
-	json goss = make_gossip();
+	json goss = Gossip{};
 	goss["type"] = "GOSSIP";
 	std::cout << goss << "\n";
 	us_sock.send_to(boost::asio::buffer(goss.dump()), silicon);
