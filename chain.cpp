@@ -1,4 +1,6 @@
 #include <unistd.h>
+#include <cstdlib>
+#include <ctime>
 #include <iostream>
 #include <span>
 #include <array>
@@ -61,13 +63,46 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(GossipReply, host, port, name)
 std::unordered_set<msg_id_t> sent_gossips{};
 std::vector<udp::endpoint> peers{};
 
-void process_gossip(const Gossip& incoming) {
+void add_peer(host_t host, port_t port) {
+	auto host_addr = boost::asio::ip::address::from_string(host);
+	for (auto&& peer : peers) {
+		if (peer.address() == host_addr && peer.port() == port) {
+			return;
+		}
+	}
+
+	peers.push_back(udp::endpoint{host_addr, port});
+}
+
+void add_peer(udp::endpoint ep) {
+	for (auto&& peer : peers) {
+		if (peer.address() == ep.address() && peer.port() == ep.port()) {
+			return;
+		}
+	}
+
+	peers.push_back(ep);
+}
+
+void process_gossip(const Gossip& incoming, udp::socket& us_sock) {
 	if (sent_gossips.contains(incoming.id)) return;
 
 	sent_gossips.insert(incoming.id);
 	GossipReply reply{my_host, my_port, my_name};
-	// Send reply to incoming.host @ incoming.port
-	// Send incoming to 3 other peers
+	json reply_json = reply;
+	reply_json["type"] = "GOSSIP_REPLY";
+	us_sock.send_to(boost::asio::buffer(reply_json.dump()), udp::endpoint{boost::asio::ip::address::from_string(incoming.host), incoming.port});
+
+	add_peer(incoming.host, incoming.port);
+
+	json goss_json = incoming;
+	goss_json["type"] = "GOSSIP";
+
+	for (int i = 0; i < peers_to_repeat_to; ++i) {
+		size_t idx = std::rand() % peers.size();
+		std::cout << "Forwarding gossip to " << idx << "\n";
+		us_sock.send_to(boost::asio::buffer(goss_json.dump()), peers[idx]);
+	}
 }
 
 Gossip make_gossip() {
@@ -79,18 +114,9 @@ Gossip make_gossip() {
 	};
 }
 
-void add_peer(string host, port_t port) {
-	auto host_addr = boost::asio::ip::address::from_string(host);
-	for (auto&& peer : peers) {
-		if (peer.address() == host_addr && peer.port() == port) {
-			return;
-		}
-	}
-
-	peers.push_back(udp::endpoint{host_addr, port});
-}
-
 int main() {
+	std::srand(std::time(nullptr));
+
 	boost::asio::io_context io_ctxt{};
 
 	udp::endpoint us_ep = udp::endpoint{udp::v4(), my_port};
@@ -155,7 +181,10 @@ int main() {
 	std::cout << "Listening for Gossips\n";
 	while (true) {
 		std::array<char, 1024> buf;
-		size_t len = us_sock.receive(boost::asio::buffer(buf));
+		udp::endpoint sender;
+		size_t len = us_sock.receive_from(boost::asio::buffer(buf), sender);
+
+		add_peer(sender);
 
 		std::cout.write(buf.data(), len);
 		std::cout << "\n" << len << "\n";
@@ -163,7 +192,7 @@ int main() {
 		string resp{buf.data()};
 		json incoming = json::parse(resp.substr(0, len));
 		if (incoming["type"] == "GOSSIP") {
-			process_gossip(incoming.template get<Gossip>());
+			process_gossip(incoming.template get<Gossip>(), us_sock);
 		}
 	}
 
