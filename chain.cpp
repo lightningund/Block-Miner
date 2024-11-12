@@ -9,15 +9,16 @@
 #include "json.hpp"
 
 using json = nlohmann::json;
+using boost::asio::ip::udp;
+using std::string;
 
 #define LOG_ERR(msg) std::cerr << (msg) << ": " << errno << "\n"
 
 constexpr auto peers_to_repeat_to = 3;
 
-using std::string;
 using msg_id_t = string;
 using host_t = string;
-using port_t = unsigned int;
+using port_t = short unsigned int;
 using name_t = string;
 
 using stamp_t = long long;
@@ -46,6 +47,8 @@ struct Gossip {
 	msg_id_t id;
 };
 
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Gossip, host, port, name, id)
+
 // Contains info about the node that received the gossip
 struct GossipReply {
 	host_t host;
@@ -53,7 +56,10 @@ struct GossipReply {
 	name_t name;
 };
 
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(GossipReply, host, port, name)
+
 std::unordered_set<msg_id_t> sent_gossips{};
+std::vector<udp::endpoint> peers{};
 
 void process_gossip(const Gossip& incoming) {
 	if (sent_gossips.contains(incoming.id)) return;
@@ -64,19 +70,27 @@ void process_gossip(const Gossip& incoming) {
 	// Send incoming to 3 other peers
 }
 
-string make_gossip_json() {
-	string result = "{";
-	result += "\"type\": \"GOSSIP\",";
-	result += "\"host\": \"" + my_host + "\",";
-	result += "\"port\": " + std::to_string(my_port) + ",";
-	result += "\"id\": " + std::to_string(get_timestamp()) + ",";
-	result += "\"name\": \"" + my_name + "\"}";
-	return result;
+Gossip make_gossip() {
+	return {
+		.host = my_host,
+		.port = my_port,
+		.name = my_name,
+		.id = std::to_string(get_timestamp())
+	};
+}
+
+void add_peer(string host, port_t port) {
+	auto host_addr = boost::asio::ip::address::from_string(host);
+	for (auto&& peer : peers) {
+		if (peer.address() == host_addr && peer.port() == port) {
+			return;
+		}
+	}
+
+	peers.push_back(udp::endpoint{host_addr, port});
 }
 
 int main() {
-	using boost::asio::ip::udp;
-
 	boost::asio::io_context io_ctxt{};
 
 	udp::endpoint us_ep = udp::endpoint{udp::v4(), my_port};
@@ -103,7 +117,6 @@ int main() {
 
 	while (true) {
 		std::array<char, 1024> buf;
-		boost::system::error_code error;
 		size_t len = us_sock.receive(boost::asio::buffer(buf));
 
 		std::cout.write(buf.data(), len);
@@ -114,22 +127,43 @@ int main() {
 		}
 	}
 
-	string goss = make_gossip_json();
+	json goss = make_gossip();
+	goss["type"] = "GOSSIP";
 	std::cout << goss << "\n";
-	us_sock.send_to(boost::asio::buffer(goss), silicon);
+	us_sock.send_to(boost::asio::buffer(goss.dump()), silicon);
+	sent_gossips.insert(goss["id"]);
 
 	std::cout << "Sent Gossip\n";
 
-	while (true) {
+	json gossip_reply;
+
+	// Should be in a loop in case there are more than 1024 characters sent
+	{
 		std::array<char, 1024> buf;
-		boost::system::error_code error;
 		size_t len = us_sock.receive(boost::asio::buffer(buf));
 
 		std::cout.write(buf.data(), len);
 		std::cout << "\n" << len << "\n";
 
-		if (len < buf.size()) {
-			break; // All out of data
+		string resp{buf.data()};
+		gossip_reply = json::parse(resp.substr(0, len));
+	}
+
+	add_peer(gossip_reply["host"], gossip_reply["port"]);
+
+	// Now actually listen for gossips
+	std::cout << "Listening for Gossips\n";
+	while (true) {
+		std::array<char, 1024> buf;
+		size_t len = us_sock.receive(boost::asio::buffer(buf));
+
+		std::cout.write(buf.data(), len);
+		std::cout << "\n" << len << "\n";
+
+		string resp{buf.data()};
+		json incoming = json::parse(resp.substr(0, len));
+		if (incoming["type"] == "GOSSIP") {
+			process_gossip(incoming.template get<Gossip>());
 		}
 	}
 
