@@ -93,24 +93,9 @@ class Request {
 std::unordered_set<msg_id_t> sent_gossips{};
 std::vector<Peer> peers{};
 
-void add_peer(host_t host, port_t port) {
-	auto host_addr = boost::asio::ip::address::from_string(host);
-	for (auto&& peer : peers) {
-		if (peer.endpoint.address() == host_addr && peer.endpoint.port() == port) {
-			peer.last_msg = get_now();
-			return;
-		}
-	}
-
-	peers.push_back(Peer{
-		.endpoint = udp::endpoint{host_addr, port},
-		.last_msg = get_now()
-	});
-}
-
 void add_peer(udp::endpoint ep) {
 	for (auto&& peer : peers) {
-		if (peer.endpoint.address() == ep.address() && peer.endpoint.port() == ep.port()) {
+		if (same_ep(peer.endpoint, ep)) {
 			peer.last_msg = get_now();
 			return;
 		}
@@ -120,6 +105,12 @@ void add_peer(udp::endpoint ep) {
 		.endpoint = ep,
 		.last_msg = get_now()
 	});
+}
+
+void add_peer(host_t host, port_t port) {
+	auto host_addr = boost::asio::ip::address::from_string(host);
+	udp::endpoint new_ep{host_addr, port};
+	add_peer(new_ep);
 }
 
 void process_gossip(const Gossip& incoming, udp::socket& us_sock) {
