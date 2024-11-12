@@ -1,8 +1,3 @@
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <poll.h>
 #include <unistd.h>
 #include <iostream>
 #include <span>
@@ -59,137 +54,36 @@ void process_gossip(const Gossip& incoming) {
 }
 
 int main() {
-	using boost::asio::ip::tcp;
+	using boost::asio::ip::udp;
 
 	boost::asio::io_context io_ctxt{};
 
-	tcp::resolver resolver{io_ctxt};
+	udp::socket socket{io_ctxt, udp::endpoint{udp::v4(), 0}};
 
-	auto endpoints = resolver.resolve("silicon.cs.umanitoba.ca", "silicon");
+	std::cout << "Made Socket\n";
 
-	tcp::socket socket{io_ctxt};
-	boost::asio::connect(socket, endpoints);
+	udp::resolver resolver{io_ctxt};
+	udp::endpoint silicon = *resolver.resolve({udp::v4(), "silicon.cs.umanitoba.ca", "8999"});
+
+	std::cout << "Made Endpoint\n";
+
+	std::string msg = "{\"type\": \"STATS\"}";
+	socket.send_to(boost::asio::buffer(msg), silicon);
+
+	std::cout << "Sent message\n";
 
 	while (true) {
 		std::array<char, 1024> buf;
 		boost::system::error_code error;
-		size_t len = socket.read_some(boost::asio::buffer(buf), error);
-
-		if (error == boost::asio::error::eof) {
-			break; // Server Ended Connection
-		} else if (error) {
-			throw boost::system::system_error(error); // Real error
-		}
+		size_t len = socket.receive(boost::asio::buffer(buf));
 
 		std::cout.write(buf.data(), len);
+		std::cout << "\n" << len << "\n";
+
+		if (len < buf.size()) {
+			break; // All out of data
+		}
 	}
-
-	// int server_socket = socket(AF_INET, SOCK_DGRAM, 0);
-
-	// if (server_socket < 0) {
-	// 	LOG_ERR("chat server socket initialization error");
-	// 	return -1;
-	// }
-
-	// std::cout << "Socket Created\n";
-
-	// sockaddr_in sock_addr{
-	// 	AF_INET, htons(0), inet_addr("")
-	// };
-
-	// if (bind(
-	// 	server_socket,
-	// 	reinterpret_cast<sockaddr*>(&sock_addr),
-	// 	sizeof(sock_addr)
-	// ) < 0) {
-	// 	LOG_ERR("bind error");
-	// 	close(server_socket);
-	// 	return -1;
-	// }
-
-	// std::cout << "Socket Bound\n";
-
-	// timeval timeout;
-	// timeout.tv_sec = 10;
-	// timeout.tv_usec = 0;
-
-	// if (setsockopt(server_socket, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
-	// 	LOG_ERR("error setting socket timeout");
-	// 	return -1;
-	// }
-
-	// std::cout << "Timeout Set\n";
-
-	// sockaddr_in sock_rep{};
-	// socklen_t sock_size = sizeof(sock_rep);
-
-	// if (getsockname(server_socket, reinterpret_cast<sockaddr*>(&sock_rep), &sock_size) < 0) {
-	// 	LOG_ERR("Error Getting Socket Name");
-	// 	return -1;
-	// }
-
-	// std::string my_ip(20, '\0');
-	// inet_ntop(AF_INET, &sock_rep.sin_addr, my_ip.data(), 20);
-
-	// std::cout << my_ip << "\n" << ntohs(sock_rep.sin_port) << "\n";
-
-	// sockaddr_in silicon_addr{
-	// 	AF_INET, htons(8999), inet_addr("silicon.cs.umanitoba.ca")
-	// };
-
-	// std::string msg = "{\"type\": \"STATS\"}";
-	// if (sendto(server_socket, msg.c_str(), msg.size(), 0, reinterpret_cast<sockaddr*>(&silicon_addr), sizeof(silicon_addr)) < 0) {
-	// 	LOG_ERR("Failed to send");
-	// 	return -1;
-	// }
-
-	// std::cout << msg << " Sent\n";
-
-	// std::string resp(1024, '\0');
-	// int recv_len = recv(server_socket, resp.data(), resp.size(), 0);
-	// if (recv_len < 0) {
-	// 	LOG_ERR("recv error");
-	// 	return -1;
-	// }
-
-	// std::cout << "Response Received\n";
-
-	// resp = resp.substr(0, recv_len);
-	// std::cout << resp << "\n";
-
-	// sockaddr_in server_addr{
-	// 	AF_INET, htons(8999), inet_addr("silicon.cs.umanitoba.ca")
-	// };
-
-	// // Send connection request to server:
-	// if (connect(server_socket, reinterpret_cast<sockaddr*>(&server_addr), sizeof(server_addr)) < 0) {
-	// 	LOG_ERR("connect error");
-	// 	return -1;
-	// }
-
-	// std::cout << "Connected with server successfully\n";
-	// std::cout << "Gossiping\n";
-	// // Send the message to server:
-	// std::string req_str = "GOSSIP";
-
-	// if (send(server_socket, req_str.c_str(), req_str.size(), 0) < 0) {
-	// 	LOG_ERR("Unable to send message\n");
-	// 	return -1;
-	// }
-
-	// std::cout << "Request sent\n";
-	// std::string resp(1000, '\0');
-
-	// // Receive the server's response:
-	// int recv_len = recv(server_socket, resp.data(), resp.size(), 0);
-	// if (recv_len < 0) {
-	// 	LOG_ERR("Error while receiving server's msg\n");
-	// 	return -1;
-	// }
-
-	// resp = resp.substr(0, recv_len);
-
-	// std::cout << "Messages Received\n" << resp << "\n";
 
 	return 0;
 }
