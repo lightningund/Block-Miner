@@ -52,6 +52,12 @@ struct Peer {
 	string local_hash;
 };
 
+struct Receipt {
+	string msg;
+	udp::endpoint sender;
+	timepoint received;
+};
+
 struct Request {
 	string msg;
 	udp::endpoint target;
