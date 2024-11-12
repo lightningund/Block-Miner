@@ -19,6 +19,6 @@ msg_id_t get_msg_id() {
 	return std::to_string(get_timestamp());
 }
 
-bool same_ep(const boost::asio::ip::udp::endpoint& a, const boost::asio::ip::udp::endpoint& b) {
+bool same_ep(const udp::endpoint& a, const udp::endpoint& b) {
 	return a.address() == b.address() && a.port() == b.port();
 }

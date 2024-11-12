@@ -10,9 +10,12 @@
 
 #include "types.hpp"
 #include "helpers.hpp"
-#include "json.hpp"
 
+#include "json.hpp"
 using json = nlohmann::json;
+
+// For intellisense
+#include <boost/asio.hpp>
 using boost::asio::ip::udp;
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Gossip, host, port, name, id)

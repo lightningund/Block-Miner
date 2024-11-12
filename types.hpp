@@ -3,6 +3,7 @@
 #include <boost/asio.hpp>
 
 using std::string;
+using boost::asio::ip::udp;
 using namespace std::chrono;
 
 using msg_id_t = string;
@@ -45,7 +46,7 @@ struct GossipReply {
 };
 
 struct Peer {
-	boost::asio::ip::udp::endpoint endpoint;
+	udp::endpoint endpoint;
 	timepoint last_msg;
 	size_t local_height;
 	string local_hash;
@@ -53,6 +54,6 @@ struct Peer {
 
 struct Request {
 	string msg;
-	boost::asio::ip::udp::endpoint target;
+	udp::endpoint target;
 	timepoint last_send;
 };
