@@ -9,6 +9,8 @@ using std::string;
 using boost::asio::ip::udp;
 using namespace std::chrono;
 
+using rcv_timeout_option = boost::asio::detail::socket_option::integer<SOL_SOCKET, SO_RCVTIMEO>;
+
 using msg_id_t = string;
 using host_t = string;
 using port_t = short unsigned int;

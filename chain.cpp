@@ -6,7 +6,7 @@
 #include <array>
 #include <vector>
 #include <unordered_set>
-#include <unordered_map>
+#include <map>
 #include <chrono>
 
 #include "types.hpp"
@@ -115,35 +115,84 @@ Request make_request(udp::socket& us_sock, Peer& recip, string msg, string respo
 
 // Check to see if the new message is the response to any of a list of requests
 // Returns the number of completed requests in the list
-size_t check_requests(std::vector<Request>& requests, json response, udp::endpoint sender) {
-	size_t completed = 0;
-
+void check_requests(std::vector<Request>& requests, json response, udp::endpoint sender) {
 	for (auto& req : requests) {
-		if (req.done) {
-			++completed;
-		} else {
-			if (same_ep(req.target.endpoint, sender) && response["type"] == req.response_type) {
-				req.done = true;
-				req.response = response;
-				++completed;
-			}
+		if (req.done) continue;
+
+		if (same_ep(req.target.endpoint, sender) && response["type"] == req.response_type) {
+			req.done = true;
+			req.response = response;
+			return;
 		}
+	}
+}
+
+size_t count_requests(const std::vector<Request>& requests) {
+	size_t completed = 0;
+	for (const auto& req : requests) {
+		if (req.done) ++completed;
 	}
 
 	return completed;
 }
 
+bool verify_chain() {
+	string last_hash = "";
+
+	for (auto&& block : chain) {
+		// if (hash(last_hash, block) != block.hash) return false;
+		// last_hash = block.hash;
+	}
+
+	return true;
+}
+
+// God this function does a lot of loops
 void complete_consensus(udp::socket& us_sock) {
 	std::cout << "Consensus Complete\n";
 	in_consensus = false;
 
+	size_t longest = 0;
+
+	// Find the longest chain
 	for (auto&& req : reqs) {
 		std::cout << req.response << "\n";
 		req.target.local_hash = req.response["hash"];
 		req.target.local_height = req.response["height"];
+
+		longest = std::max(longest, req.response["height"].template get<size_t>());
 	}
 
 	reqs.clear();
+
+	// Find the most commonly believed hash
+	std::map<string, size_t> chains;
+
+	// Categorize the chains by their hash
+	for (auto&& peer : peers) {
+		if (peer.local_height != longest) continue;
+
+		++chains[peer.local_hash];
+	}
+
+	size_t votes = 0;
+	string hash = "";
+
+	// Find the longest
+	for (const auto& [key, value] : chains) {
+		if (value > votes) {
+			votes = value;
+			hash = key;
+		}
+	}
+
+	for (auto& peer : peers) {
+		if (peer.local_hash == hash && peer.local_height == longest) {
+			for (int i = 0; i < longest; ++i) {
+				reqs.push_back(make_request(us_sock, peer, "{\"type\":\"GET_BLOCK\",\"height\":" + std::to_string(i) + "}", "GET_BLOCK_REPLY"));
+			}
+		}
+	}
 }
 
 // Create a brand new gossip and send it to the main server
@@ -159,6 +208,8 @@ void make_gossip(udp::socket& us_sock) {
 }
 
 void self_check(udp::socket& us_sock) {
+	std::cout << "Performing self check\n";
+
 	timepoint now = get_now();
 
 	next_self_check = now + self_check_time;
@@ -171,6 +222,13 @@ void self_check(udp::socket& us_sock) {
 	// Remove peers we haven't heard from
 	for (size_t i = 0; i < peers.size(); ++i) {
 		if (peers[i].last_msg + peer_dead_time < now) {
+			for (size_t j = 0; j < reqs.size(); ++j) {
+				if (reqs[j].target == peers[i]) {
+					reqs.erase(reqs.begin() + j);
+					--j;
+				}
+			}
+
 			peers.erase(peers.begin() + i);
 			--i;
 		}
@@ -193,6 +251,7 @@ int main() {
 	udp::endpoint us_ep = udp::endpoint{udp::v4(), my_port};
 
 	udp::socket us_sock = udp::socket{io_ctxt, us_ep};
+	us_sock.set_option(rcv_timeout_option{200});
 
 	std::cout << "Made Socket\n";
 
@@ -233,12 +292,13 @@ int main() {
 		Receipt rec = recv(us_sock);
 		json incoming = json::parse(rec.msg);
 
-		size_t filled = check_requests(reqs, incoming, rec.sender);
+		check_requests(reqs, incoming, rec.sender);
+		size_t filled = count_requests(reqs);
 
 		std::cout << filled << "/" << reqs.size() << " Requests Filled\n";
 
-		if (filled == reqs.size()) {
-			if (in_consensus) {
+		if (in_consensus) {
+			if (filled == reqs.size()) {
 				complete_consensus(us_sock);
 			}
 		}
