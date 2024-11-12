@@ -62,4 +62,5 @@ struct Request {
 	string msg;
 	udp::endpoint target;
 	timepoint last_send;
+	string response_type;
 };

@@ -28,12 +28,11 @@ name_t my_name = "Ben's Computer";
 
 boost::asio::io_context io_ctxt{};
 
-udp::socket us_sock;
-
 std::unordered_set<msg_id_t> sent_gossips{};
 std::vector<Peer> peers{};
 std::vector<Request> reqs{};
 
+timepoint next_self_check;
 timepoint last_gossip;
 
 void add_peer(udp::endpoint ep) {
@@ -56,8 +55,10 @@ void add_peer(host_t host, port_t port) {
 	add_peer(new_ep);
 }
 
-void process_gossip(const Gossip& incoming) {
+void process_gossip(udp::socket& us_sock, const Gossip& incoming) {
 	if (sent_gossips.contains(incoming.id)) return;
+
+	last_gossip = get_now();
 
 	sent_gossips.insert(incoming.id);
 	GossipReply reply{my_host, my_port, my_name};
@@ -81,7 +82,7 @@ void process_gossip(const Gossip& incoming) {
 // Adds the sender to the list of peers
 // Also prints the message and the length
 // Returns the JSON parsed message
-Receipt recv() {
+Receipt recv(udp::socket& us_sock) {
 	Receipt rec;
 	std::array<char, 1024> buf;
 	size_t len = us_sock.receive_from(boost::asio::buffer(buf), rec.sender);
@@ -96,18 +97,19 @@ Receipt recv() {
 	return rec;
 }
 
-void make_request(udp::endpoint recip, string msg) {
+Request make_request(udp::socket& us_sock, udp::endpoint recip, string msg, string response_type) {
 	us_sock.send_to(boost::asio::buffer(msg), recip);
 
-	reqs.push_back(Request{
+	return Request{
 		.msg = msg,
 		.target = recip,
-		.last_send = get_now()
-	});
+		.last_send = get_now(),
+		.response_type = response_type
+	};
 }
 
 // Create a brand new gossip and send it to the main server
-void make_gossip() {
+void make_gossip(udp::socket& us_sock) {
 	std::cout << "Generating Gossip\n";
 	udp::resolver resolver{io_ctxt};
 	udp::endpoint silicon = *resolver.resolve({udp::v4(), "silicon.cs.umanitoba.ca", "8999"});
@@ -118,11 +120,14 @@ void make_gossip() {
 	sent_gossips.insert(goss["id"]);
 }
 
-void self_check() {
+void self_check(udp::socket& us_sock) {
 	timepoint now = get_now();
 
-	if (last_gossip + re_gossip_time < now) {
+	next_self_check = now + self_check_time;
 
+	// Make sure to generate gossip if we haven't sent anything in a while
+	if (last_gossip + re_gossip_time < now) {
+		make_gossip(us_sock);
 	}
 
 	// Remove peers we haven't heard from
@@ -132,13 +137,22 @@ void self_check() {
 			--i;
 		}
 	}
+
+	// Re-send requests we haven't received responses to
+	for (auto& req : reqs) {
+		if (req.last_send + msg_dead_time < now) {
+			us_sock.send_to(boost::asio::buffer(req.msg), req.target);
+			req.last_send = now;
+		}
+	}
 }
 
 int main() {
 	std::srand(std::time(nullptr));
 
 	udp::endpoint us_ep = udp::endpoint{udp::v4(), my_port};
-	us_sock = udp::socket{io_ctxt, us_ep};
+
+	udp::socket us_sock = udp::socket{io_ctxt, us_ep};
 
 	std::cout << "Made Socket\n";
 
@@ -147,17 +161,19 @@ int main() {
 	std::cout << "Our Address: " << my_host << "\n";
 	std::cout << "Our Port: " << my_port << "\n";
 
+	make_gossip(us_sock);
+
 	std::cout << "Sent Gossip\n";
 
 	// Wait a while to collect a list of peers
 	std::cout << "Listening for Peers\n";
 	auto finish = get_now() + std::chrono::seconds{10};
 	while (get_now() < finish) {
-		Receipt rec = recv();
+		Receipt rec = recv(us_sock);
 		json incoming = json::parse(rec.msg);
 
 		if (incoming["type"] == "GOSSIP") {
-			process_gossip(incoming.template get<Gossip>());
+			process_gossip(us_sock, incoming.template get<Gossip>());
 		} else if (incoming["type"] == "GOSSIP_REPLY") {
 			add_peer(incoming["host"], incoming["port"]);
 		}
@@ -173,16 +189,20 @@ int main() {
 	std::cout << "Asked for stats\n";
 
 	while (true) {
-		Receipt rec = recv();
+		Receipt rec = recv(us_sock);
 		json incoming = json::parse(rec.msg);
 		if (incoming["type"] == "GOSSIP") {
-			process_gossip(incoming.template get<Gossip>());
+			process_gossip(us_sock, incoming.template get<Gossip>());
 		} else if (incoming["type"] == "GOSSIP_REPLY") {
 			add_peer(incoming["host"], incoming["port"]);
 		} else if (incoming["type"] == "STATS") {
 			// Return stats
 		} else if (incoming["type"] == "STATS_REPLY") {
 			// Update our own stats
+		}
+
+		if (get_now() > next_self_check) {
+			self_check(us_sock);
 		}
 	}
 
