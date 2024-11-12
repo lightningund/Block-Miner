@@ -26,8 +26,15 @@ host_t my_host = "127.0.0.1";
 port_t my_port = 50000;
 name_t my_name = "Ben's Computer";
 
+boost::asio::io_context io_ctxt{};
+
+udp::socket us_sock;
+
 std::unordered_set<msg_id_t> sent_gossips{};
 std::vector<Peer> peers{};
+std::vector<Request> reqs{};
+
+timepoint last_gossip;
 
 void add_peer(udp::endpoint ep) {
 	for (auto&& peer : peers) {
@@ -49,7 +56,7 @@ void add_peer(host_t host, port_t port) {
 	add_peer(new_ep);
 }
 
-void process_gossip(const Gossip& incoming, udp::socket& us_sock) {
+void process_gossip(const Gossip& incoming) {
 	if (sent_gossips.contains(incoming.id)) return;
 
 	sent_gossips.insert(incoming.id);
@@ -74,7 +81,7 @@ void process_gossip(const Gossip& incoming, udp::socket& us_sock) {
 // Adds the sender to the list of peers
 // Also prints the message and the length
 // Returns the JSON parsed message
-Receipt recv(udp::socket& us_sock) {
+Receipt recv() {
 	Receipt rec;
 	std::array<char, 1024> buf;
 	size_t len = us_sock.receive_from(boost::asio::buffer(buf), rec.sender);
@@ -89,25 +96,49 @@ Receipt recv(udp::socket& us_sock) {
 	return rec;
 }
 
-Request make_request(udp::socket& us_sock, udp::endpoint recip, string msg) {
+void make_request(udp::endpoint recip, string msg) {
 	us_sock.send_to(boost::asio::buffer(msg), recip);
 
-	return Request{
+	reqs.push_back(Request{
 		.msg = msg,
 		.target = recip,
 		.last_send = get_now()
-	};
+	});
 }
 
+// Create a brand new gossip and send it to the main server
+void make_gossip() {
+	std::cout << "Generating Gossip\n";
+	udp::resolver resolver{io_ctxt};
+	udp::endpoint silicon = *resolver.resolve({udp::v4(), "silicon.cs.umanitoba.ca", "8999"});
 
+	json goss = Gossip{};
+	goss["type"] = "GOSSIP";
+	us_sock.send_to(boost::asio::buffer(goss.dump()), silicon);
+	sent_gossips.insert(goss["id"]);
+}
+
+void self_check() {
+	timepoint now = get_now();
+
+	if (last_gossip + re_gossip_time < now) {
+
+	}
+
+	// Remove peers we haven't heard from
+	for (size_t i = 0; i < peers.size(); ++i) {
+		if (peers[i].last_msg + peer_dead_time < now) {
+			peers.erase(peers.begin() + i);
+			--i;
+		}
+	}
+}
 
 int main() {
 	std::srand(std::time(nullptr));
 
-	boost::asio::io_context io_ctxt{};
-
 	udp::endpoint us_ep = udp::endpoint{udp::v4(), my_port};
-	udp::socket us_sock{io_ctxt, us_ep};
+	us_sock = udp::socket{io_ctxt, us_ep};
 
 	std::cout << "Made Socket\n";
 
@@ -116,28 +147,17 @@ int main() {
 	std::cout << "Our Address: " << my_host << "\n";
 	std::cout << "Our Port: " << my_port << "\n";
 
-	udp::resolver resolver{io_ctxt};
-	udp::endpoint silicon = *resolver.resolve({udp::v4(), "silicon.cs.umanitoba.ca", "8999"});
-
-	std::cout << "Made Silicon Endpoint\n";
-
-	json goss = Gossip{};
-	goss["type"] = "GOSSIP";
-	std::cout << goss << "\n";
-	us_sock.send_to(boost::asio::buffer(goss.dump()), silicon);
-	sent_gossips.insert(goss["id"]);
-
 	std::cout << "Sent Gossip\n";
 
 	// Wait a while to collect a list of peers
 	std::cout << "Listening for Peers\n";
 	auto finish = get_now() + std::chrono::seconds{10};
 	while (get_now() < finish) {
-		Receipt rec = recv(us_sock);
+		Receipt rec = recv();
 		json incoming = json::parse(rec.msg);
 
 		if (incoming["type"] == "GOSSIP") {
-			process_gossip(incoming.template get<Gossip>(), us_sock);
+			process_gossip(incoming.template get<Gossip>());
 		} else if (incoming["type"] == "GOSSIP_REPLY") {
 			add_peer(incoming["host"], incoming["port"]);
 		}
@@ -153,10 +173,10 @@ int main() {
 	std::cout << "Asked for stats\n";
 
 	while (true) {
-		Receipt rec = recv(us_sock);
+		Receipt rec = recv();
 		json incoming = json::parse(rec.msg);
 		if (incoming["type"] == "GOSSIP") {
-			process_gossip(incoming.template get<Gossip>(), us_sock);
+			process_gossip(incoming.template get<Gossip>());
 		} else if (incoming["type"] == "GOSSIP_REPLY") {
 			add_peer(incoming["host"], incoming["port"]);
 		} else if (incoming["type"] == "STATS") {

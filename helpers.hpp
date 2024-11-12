@@ -5,6 +5,8 @@
 
 constexpr auto peers_to_repeat_to = 3;
 constexpr auto msg_dead_time = 30s;
+constexpr auto peer_dead_time = 1min;
+constexpr auto re_gossip_time = 30s;
 
 timepoint get_now() {
 	return std::chrono::system_clock::now();
