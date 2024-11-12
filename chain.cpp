@@ -35,11 +35,12 @@ port_t my_port = 50000;
 name_t my_name = "Ben's Computer";
 
 struct Block {
-	string miner;
+	string minedBy;
 	std::span<string> messages; // Each message is <=20 characters, max 10 messages
 	string nonce; // Must be under 40 characters
-	// Hash (difficulty 8?) TODO
-	// Height? TODO
+	size_t height;
+	size_t timestamp;
+	string hash;
 };
 
 struct Gossip {
