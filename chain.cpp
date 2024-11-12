@@ -6,6 +6,7 @@
 #include <array>
 #include <vector>
 #include <unordered_set>
+#include <unordered_map>
 #include <chrono>
 
 #include "types.hpp"
@@ -101,8 +102,8 @@ Receipt recv(udp::socket& us_sock) {
 	return rec;
 }
 
-Request make_request(udp::socket& us_sock, udp::endpoint recip, string msg, string response_type) {
-	us_sock.send_to(boost::asio::buffer(msg), recip);
+Request make_request(udp::socket& us_sock, Peer& recip, string msg, string response_type) {
+	us_sock.send_to(boost::asio::buffer(msg), recip.endpoint);
 
 	return Request{
 		.msg = msg,
@@ -112,6 +113,8 @@ Request make_request(udp::socket& us_sock, udp::endpoint recip, string msg, stri
 	};
 }
 
+// Check to see if the new message is the response to any of a list of requests
+// Returns the number of completed requests in the list
 size_t check_requests(std::vector<Request>& requests, json response, udp::endpoint sender) {
 	size_t completed = 0;
 
@@ -119,7 +122,7 @@ size_t check_requests(std::vector<Request>& requests, json response, udp::endpoi
 		if (req.done) {
 			++completed;
 		} else {
-			if (same_ep(req.target, sender) && response["type"] == req.response_type) {
+			if (same_ep(req.target.endpoint, sender) && response["type"] == req.response_type) {
 				req.done = true;
 				req.response = response;
 				++completed;
@@ -136,6 +139,8 @@ void complete_consensus(udp::socket& us_sock) {
 
 	for (auto&& req : reqs) {
 		std::cout << req.response << "\n";
+		req.target.local_hash = req.response["hash"];
+		req.target.local_height = req.response["height"];
 	}
 
 	reqs.clear();
@@ -176,7 +181,7 @@ void self_check(udp::socket& us_sock) {
 		if (req.done) continue;
 		if (req.last_send + msg_dead_time < now) {
 			std::cout << "Resending message " << req.msg << "\n";
-			us_sock.send_to(boost::asio::buffer(req.msg), req.target);
+			us_sock.send_to(boost::asio::buffer(req.msg), req.target.endpoint);
 			req.last_send = now;
 		}
 	}
@@ -219,7 +224,7 @@ int main() {
 	string msg = "{\"type\": \"STATS\"}";
 	in_consensus = true;
 	for (auto&& peer : peers) {
-		reqs.push_back(make_request(us_sock, peer.endpoint, msg, "STATS_REPLY"));
+		reqs.push_back(make_request(us_sock, peer, msg, "STATS_REPLY"));
 	}
 
 	std::cout << "Asked for stats\n";

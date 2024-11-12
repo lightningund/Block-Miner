@@ -64,7 +64,7 @@ struct Receipt {
 struct Request {
 	bool done;
 	string msg;
-	udp::endpoint target;
+	Peer& target;
 	timepoint last_send;
 	string response_type;
 	json response;
