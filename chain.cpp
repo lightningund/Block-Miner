@@ -74,6 +74,12 @@ struct Peer {
 	string local_hash;
 };
 
+class Request {
+	string msg;
+	udp::endpoint target;
+	timepoint last_send;
+};
+
 std::unordered_set<msg_id_t> sent_gossips{};
 std::vector<udp::endpoint> peers{};
 
@@ -128,6 +134,34 @@ Gossip make_gossip() {
 	};
 }
 
+// Fills sender with who we received the data from
+// Can receive up to 1024 characters at a time
+// Adds the sender to the list of peers
+// Also prints the message and the length
+// Returns the JSON parsed message
+json recv(udp::socket& us_sock, udp::endpoint& sender) {
+	std::array<char, 1024> buf;
+	size_t len = us_sock.receive_from(boost::asio::buffer(buf), sender);
+
+	add_peer(sender);
+
+	string resp{buf.data()};
+	resp = resp.substr(0, len);
+
+	std::cout << len << " " << resp << "\n";
+	return json::parse(resp);
+}
+
+// Receive for when you don't need the endpoint of the sender
+// Can receive up to 1024 characters at a time
+// Adds the sender to the list of peers
+// Also prints the message and the length
+// Returns the JSON parsed message
+json recv(udp::socket& us_sock) {
+	udp::endpoint _sender;
+	return recv(us_sock, _sender);
+}
+
 int main() {
 	std::srand(std::time(nullptr));
 
@@ -158,19 +192,10 @@ int main() {
 
 	// Wait a while to collect a list of peers
 	std::cout << "Listening for Peers\n";
-	auto finish = get_now() + std::chrono::minutes{1};
+	auto finish = get_now() + std::chrono::seconds{10};
 	while (get_now() < finish) {
-		std::array<char, 1024> buf;
-		udp::endpoint sender;
-		size_t len = us_sock.receive_from(boost::asio::buffer(buf), sender);
+		json incoming = recv(us_sock);
 
-		add_peer(sender);
-
-		std::cout.write(buf.data(), len);
-		std::cout << "\n" << len << "\n";
-
-		string resp{buf.data()};
-		json incoming = json::parse(resp.substr(0, len));
 		if (incoming["type"] == "GOSSIP") {
 			process_gossip(incoming.template get<Gossip>(), us_sock);
 		} else if (incoming["type"] == "GOSSIP_REPLY") {
@@ -188,17 +213,8 @@ int main() {
 	std::cout << "Asked for stats\n";
 
 	while (true) {
-		std::array<char, 1024> buf;
-		udp::endpoint sender;
-		size_t len = us_sock.receive_from(boost::asio::buffer(buf), sender);
-
-		add_peer(sender);
-
-		std::cout.write(buf.data(), len);
-		std::cout << "\n" << len << "\n";
-
-		string resp{buf.data()};
-		json incoming = json::parse(resp.substr(0, len));
+		string resp = recv(us_sock);
+		json incoming = json::parse(resp);
 		if (incoming["type"] == "GOSSIP") {
 			process_gossip(incoming.template get<Gossip>(), us_sock);
 		} else if (incoming["type"] == "GOSSIP_REPLY") {
