@@ -6,6 +6,9 @@
 #include <unordered_set>
 #include <chrono>
 #include <boost/asio.hpp>
+#include "json.hpp"
+
+using json = nlohmann::json;
 
 #define LOG_ERR(msg) std::cerr << (msg) << ": " << errno << "\n"
 
