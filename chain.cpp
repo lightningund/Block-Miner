@@ -25,9 +25,15 @@ using name_t = string;
 
 using stamp_t = long long;
 
+using timepoint = std::chrono::time_point<std::chrono::system_clock>;
+
+timepoint get_now() {
+	return std::chrono::system_clock::now();
+}
+
 stamp_t get_timestamp() {
 	using namespace std::chrono;
-	return duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+	return duration_cast<milliseconds>(get_now().time_since_epoch()).count();
 }
 
 host_t my_host = "127.0.0.1";
@@ -60,6 +66,13 @@ struct GossipReply {
 };
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(GossipReply, host, port, name)
+
+struct Peer {
+	udp::endpoint endpoint;
+	timepoint last_msg;
+	size_t local_height;
+	string local_hash;
+};
 
 std::unordered_set<msg_id_t> sent_gossips{};
 std::vector<udp::endpoint> peers{};
@@ -135,23 +148,6 @@ int main() {
 
 	std::cout << "Made Silicon Endpoint\n";
 
-	string msg = "{\"type\": \"STATS\"}";
-	us_sock.send_to(boost::asio::buffer(msg), silicon);
-
-	std::cout << "Sent message\n";
-
-	while (true) {
-		std::array<char, 1024> buf;
-		size_t len = us_sock.receive(boost::asio::buffer(buf));
-
-		std::cout.write(buf.data(), len);
-		std::cout << "\n" << len << "\n";
-
-		if (len < buf.size()) {
-			break; // All out of data
-		}
-	}
-
 	json goss = make_gossip();
 	goss["type"] = "GOSSIP";
 	std::cout << goss << "\n";
@@ -162,6 +158,35 @@ int main() {
 
 	// Wait a while to collect a list of peers
 	std::cout << "Listening for Peers\n";
+	auto finish = get_now() + std::chrono::minutes{1};
+	while (get_now() < finish) {
+		std::array<char, 1024> buf;
+		udp::endpoint sender;
+		size_t len = us_sock.receive_from(boost::asio::buffer(buf), sender);
+
+		add_peer(sender);
+
+		std::cout.write(buf.data(), len);
+		std::cout << "\n" << len << "\n";
+
+		string resp{buf.data()};
+		json incoming = json::parse(resp.substr(0, len));
+		if (incoming["type"] == "GOSSIP") {
+			process_gossip(incoming.template get<Gossip>(), us_sock);
+		} else if (incoming["type"] == "GOSSIP_REPLY") {
+			add_peer(incoming["host"], incoming["port"]);
+		}
+	}
+
+	std::cout << "Collected peers\n";
+
+	string msg = "{\"type\": \"STATS\"}";
+	for (auto&& peer : peers) {
+		us_sock.send_to(boost::asio::buffer(msg), peer);
+	}
+
+	std::cout << "Asked for stats\n";
+
 	while (true) {
 		std::array<char, 1024> buf;
 		udp::endpoint sender;
@@ -177,7 +202,11 @@ int main() {
 		if (incoming["type"] == "GOSSIP") {
 			process_gossip(incoming.template get<Gossip>(), us_sock);
 		} else if (incoming["type"] == "GOSSIP_REPLY") {
-
+			add_peer(incoming["host"], incoming["port"]);
+		} else if (incoming["type"] == "STATS") {
+			// Return stats
+		} else if (incoming["type"] == "STATS_REPLY") {
+			// Update our own stats
 		}
 	}
 
