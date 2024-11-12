@@ -2,6 +2,9 @@
 #include <chrono>
 #include <boost/asio.hpp>
 
+#include "json.hpp"
+using json = nlohmann::json;
+
 using std::string;
 using boost::asio::ip::udp;
 using namespace std::chrono;
@@ -59,8 +62,10 @@ struct Receipt {
 };
 
 struct Request {
+	bool done;
 	string msg;
 	udp::endpoint target;
 	timepoint last_send;
 	string response_type;
+	json response;
 };

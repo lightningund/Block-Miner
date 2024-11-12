@@ -35,6 +35,10 @@ std::vector<Request> reqs{};
 timepoint next_self_check;
 timepoint last_gossip;
 
+std::vector<Block> chain{};
+
+bool in_consensus = false;
+
 void add_peer(udp::endpoint ep) {
 	for (auto&& peer : peers) {
 		if (same_ep(peer.endpoint, ep)) {
@@ -104,8 +108,37 @@ Request make_request(udp::socket& us_sock, udp::endpoint recip, string msg, stri
 		.msg = msg,
 		.target = recip,
 		.last_send = get_now(),
-		.response_type = response_type
+		.response_type = response_type,
 	};
+}
+
+size_t check_requests(std::vector<Request>& requests, json response, udp::endpoint sender) {
+	size_t completed = 0;
+
+	for (auto& req : requests) {
+		if (req.done) {
+			++completed;
+		} else {
+			if (same_ep(req.target, sender) && response["type"] == req.response_type) {
+				req.done = true;
+				req.response = response;
+				++completed;
+			}
+		}
+	}
+
+	return completed;
+}
+
+void complete_consensus(udp::socket& us_sock) {
+	std::cout << "Consensus Complete\n";
+	in_consensus = false;
+
+	for (auto&& req : reqs) {
+		std::cout << req.response << "\n";
+	}
+
+	reqs.clear();
 }
 
 // Create a brand new gossip and send it to the main server
@@ -140,7 +173,9 @@ void self_check(udp::socket& us_sock) {
 
 	// Re-send requests we haven't received responses to
 	for (auto& req : reqs) {
+		if (req.done) continue;
 		if (req.last_send + msg_dead_time < now) {
+			std::cout << "Resending message " << req.msg << "\n";
 			us_sock.send_to(boost::asio::buffer(req.msg), req.target);
 			req.last_send = now;
 		}
@@ -167,7 +202,7 @@ int main() {
 
 	// Wait a while to collect a list of peers
 	std::cout << "Listening for Peers\n";
-	auto finish = get_now() + std::chrono::seconds{10};
+	auto finish = get_now() + peer_scan_time;
 	while (get_now() < finish) {
 		Receipt rec = recv(us_sock);
 		json incoming = json::parse(rec.msg);
@@ -182,8 +217,9 @@ int main() {
 	std::cout << "Collected peers\n";
 
 	string msg = "{\"type\": \"STATS\"}";
+	in_consensus = true;
 	for (auto&& peer : peers) {
-		us_sock.send_to(boost::asio::buffer(msg), peer.endpoint);
+		reqs.push_back(make_request(us_sock, peer.endpoint, msg, "STATS_REPLY"));
 	}
 
 	std::cout << "Asked for stats\n";
@@ -191,6 +227,17 @@ int main() {
 	while (true) {
 		Receipt rec = recv(us_sock);
 		json incoming = json::parse(rec.msg);
+
+		size_t filled = check_requests(reqs, incoming, rec.sender);
+
+		std::cout << filled << "/" << reqs.size() << " Requests Filled\n";
+
+		if (filled == reqs.size()) {
+			if (in_consensus) {
+				complete_consensus(us_sock);
+			}
+		}
+
 		if (incoming["type"] == "GOSSIP") {
 			process_gossip(us_sock, incoming.template get<Gossip>());
 		} else if (incoming["type"] == "GOSSIP_REPLY") {
