@@ -81,27 +81,35 @@ class Request {
 };
 
 std::unordered_set<msg_id_t> sent_gossips{};
-std::vector<udp::endpoint> peers{};
+std::vector<Peer> peers{};
 
 void add_peer(host_t host, port_t port) {
 	auto host_addr = boost::asio::ip::address::from_string(host);
 	for (auto&& peer : peers) {
-		if (peer.address() == host_addr && peer.port() == port) {
+		if (peer.endpoint.address() == host_addr && peer.endpoint.port() == port) {
+			peer.last_msg = get_now();
 			return;
 		}
 	}
 
-	peers.push_back(udp::endpoint{host_addr, port});
+	peers.push_back(Peer{
+		.endpoint = udp::endpoint{host_addr, port},
+		.last_msg = get_now()
+	});
 }
 
 void add_peer(udp::endpoint ep) {
 	for (auto&& peer : peers) {
-		if (peer.address() == ep.address() && peer.port() == ep.port()) {
+		if (peer.endpoint.address() == ep.address() && peer.endpoint.port() == ep.port()) {
+			peer.last_msg = get_now();
 			return;
 		}
 	}
 
-	peers.push_back(ep);
+	peers.push_back(Peer{
+		.endpoint = ep,
+		.last_msg = get_now()
+	});
 }
 
 void process_gossip(const Gossip& incoming, udp::socket& us_sock) {
@@ -121,7 +129,7 @@ void process_gossip(const Gossip& incoming, udp::socket& us_sock) {
 	for (int i = 0; i < peers_to_repeat_to; ++i) {
 		size_t idx = std::rand() % peers.size();
 		std::cout << "Forwarding gossip to " << idx << "\n";
-		us_sock.send_to(boost::asio::buffer(goss_json.dump()), peers[idx]);
+		us_sock.send_to(boost::asio::buffer(goss_json.dump()), peers[idx].endpoint);
 	}
 }
 
@@ -207,7 +215,7 @@ int main() {
 
 	string msg = "{\"type\": \"STATS\"}";
 	for (auto&& peer : peers) {
-		us_sock.send_to(boost::asio::buffer(msg), peer);
+		us_sock.send_to(boost::asio::buffer(msg), peer.endpoint);
 	}
 
 	std::cout << "Asked for stats\n";
