@@ -12,13 +12,10 @@
  * This file is released into the Public Domain.
  */
 
-
 /*************************** HEADER FILES ***************************/
 #include <stdlib.h>
 #include <memory.h>
-extern "C" {
 #include "sha256.cuh"
-}
 /****************************** MACROS ******************************/
 #define SHA256_BLOCK_SIZE 32            // SHA256 outputs a 32 byte digest
 
