@@ -19,6 +19,8 @@ using json = nlohmann::json;
 #include <boost/asio.hpp>
 using boost::asio::ip::udp;
 
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Block, minedBy, messages, nonce, height, hash, timestamp)
+
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Gossip, host, port, name, id)
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(GossipReply, host, port, name)
@@ -69,9 +71,11 @@ void process_gossip(udp::socket& us_sock, const Gossip& incoming) {
 	GossipReply reply{my_host, my_port, my_name};
 	json reply_json = reply;
 	reply_json["type"] = "GOSSIP_REPLY";
-	us_sock.send_to(boost::asio::buffer(reply_json.dump()), udp::endpoint{boost::asio::ip::address::from_string(incoming.host), incoming.port});
+	udp::resolver resolver{io_ctxt};
+	udp::endpoint target = *resolver.resolve({udp::v4(), incoming.host, std::to_string(incoming.port)});
+	us_sock.send_to(boost::asio::buffer(reply_json.dump()), target);
 
-	add_peer(incoming.host, incoming.port);
+	add_peer(target);
 
 	json goss_json = incoming;
 	goss_json["type"] = "GOSSIP";
@@ -81,6 +85,21 @@ void process_gossip(udp::socket& us_sock, const Gossip& incoming) {
 		std::cout << "Forwarding gossip to " << idx << "\n";
 		us_sock.send_to(boost::asio::buffer(goss_json.dump()), peers[idx].endpoint);
 	}
+}
+
+void send_stats(udp::socket& us_sock, const udp::endpoint& target) {
+	if (chain.size() > 0 && chain.at(chain.size() - 1).height) {
+		json reply;
+		reply["height"] = chain.size();
+		reply["hash"] = chain[chain.size() - 1].hash;
+		reply["type"] = "STATS_REPLY";
+		std::cout << "Stats: " << reply << "\n";
+		us_sock.send_to(boost::asio::buffer(reply.dump()), target);
+	}
+}
+
+void add_block(Block b) {
+
 }
 
 // Can receive up to 1024 characters at a time
@@ -117,7 +136,7 @@ Request make_request(udp::socket& us_sock, Peer& recip, string msg, string respo
 
 // Check to see if the new message is the response to any of a list of requests
 // Returns the number of completed requests in the list
-Request& check_requests(std::vector<Request>& requests, json response, udp::endpoint sender) {
+Request check_requests(std::vector<Request>& requests, json response, udp::endpoint sender) {
 	for (auto& req : requests) {
 		if (req.done) continue;
 
@@ -174,6 +193,8 @@ void complete_consensus(udp::socket& us_sock) {
 
 	reqs.clear();
 
+	chain = std::vector<Block>(longest);
+
 	// Find the most commonly believed hash
 	std::map<string, size_t> chains;
 
@@ -187,7 +208,7 @@ void complete_consensus(udp::socket& us_sock) {
 	size_t votes = 0;
 	string hash = "";
 
-	// Find the longest
+	// Find the most agreed upon
 	for (const auto& [key, value] : chains) {
 		if (value > votes) {
 			votes = value;
@@ -314,14 +335,23 @@ int main() {
 
 		json incoming = json::parse(rec.msg);
 
-		check_requests(reqs, incoming, rec.sender);
-		size_t filled = count_requests(reqs);
+		Request filled = check_requests(reqs, incoming, rec.sender);
+		if (filled.done) { // since check_requests returns an empty request if none were filled, done will be false
+			if (in_consensus) {
+				size_t num_filled = count_requests(reqs);
 
-		std::cout << filled << "/" << reqs.size() << " Requests Filled\n";
+				std::cout << num_filled << "/" << reqs.size() << " Requests Filled\n";
+				if (num_filled == reqs.size()) {
+					complete_consensus(us_sock);
+				}
+			} else {
+				std::cout << reqs.size() << " Requests Left\n";
+				if (filled.response_type == "GET_BLOCK_REPLY") {
+					chain[filled.response["height"]] = filled.response.template get<Block>();
+				}
 
-		if (in_consensus) {
-			if (filled == reqs.size()) {
-				complete_consensus(us_sock);
+				// Clear out completed reqs
+				std::erase_if(reqs, [](Request r) { return r.done; });
 			}
 		}
 
@@ -330,9 +360,11 @@ int main() {
 		} else if (incoming["type"] == "GOSSIP_REPLY") {
 			add_peer(incoming["host"], incoming["port"]);
 		} else if (incoming["type"] == "STATS") {
-			// Return stats
+			send_stats(us_sock, rec.sender);
 		} else if (incoming["type"] == "STATS_REPLY") {
 			// Update our own stats
+		} else if (incoming["type"] == "ANNOUNCE") {
+			add_block(incoming.template get<Block>());
 		}
 	}
 

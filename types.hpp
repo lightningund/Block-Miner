@@ -1,6 +1,7 @@
 #pragma once
 #include <chrono>
 #include <memory>
+#include <vector>
 #include <boost/asio.hpp>
 
 #include "json.hpp"
@@ -29,7 +30,7 @@ extern bool same_ep(const udp::endpoint& a, const udp::endpoint& b);
 
 struct Block {
 	string minedBy;
-	std::span<string> messages; // Each message is <=20 characters, max 10 messages
+	std::vector<string> messages; // Each message is <=20 characters, max 10 messages
 	string nonce; // Must be under 40 characters
 	size_t height;
 	size_t timestamp;
