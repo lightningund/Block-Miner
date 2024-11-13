@@ -16,17 +16,6 @@
 #include <stdlib.h>
 #include <memory.h>
 #include "sha256.cuh"
-/****************************** MACROS ******************************/
-#define SHA256_BLOCK_SIZE 32            // SHA256 outputs a 32 byte digest
-
-/**************************** DATA TYPES ****************************/
-
-typedef struct {
-	BYTE data[64];
-	WORD datalen;
-	unsigned long long bitlen;
-	WORD state[8];
-} CUDA_SHA256_CTX;
 
 /****************************** MACROS ******************************/
 #ifndef ROTLEFT
@@ -57,7 +46,7 @@ __constant__ WORD k[64] = {
 /*********************** FUNCTION DEFINITIONS ***********************/
 __device__
 __forceinline__
-void cuda_sha256_transform(CUDA_SHA256_CTX *ctx, const BYTE data[]) {
+void HashContext::transform() {
 	WORD a, b, c, d, e, f, g, h, t1, t2, m[64];
 
 	for (int j = 0; j < 64; j += 4) {
@@ -67,14 +56,14 @@ void cuda_sha256_transform(CUDA_SHA256_CTX *ctx, const BYTE data[]) {
 		m[i] = SIG1(m[i - 2]) + m[i - 7] + SIG0(m[i - 15]) + m[i - 16];
 	}
 
-	a = ctx->state[0];
-	b = ctx->state[1];
-	c = ctx->state[2];
-	d = ctx->state[3];
-	e = ctx->state[4];
-	f = ctx->state[5];
-	g = ctx->state[6];
-	h = ctx->state[7];
+	a = state[0];
+	b = state[1];
+	c = state[2];
+	d = state[3];
+	e = state[4];
+	f = state[5];
+	g = state[6];
+	h = state[7];
 
 	for (int i = 0; i < 64; ++i) {
 		t1 = h + EP1(e) + CH(e, f, g) + k[i] + m[i];
@@ -89,85 +78,85 @@ void cuda_sha256_transform(CUDA_SHA256_CTX *ctx, const BYTE data[]) {
 		a = t1 + t2;
 	}
 
-	ctx->state[0] += a;
-	ctx->state[1] += b;
-	ctx->state[2] += c;
-	ctx->state[3] += d;
-	ctx->state[4] += e;
-	ctx->state[5] += f;
-	ctx->state[6] += g;
-	ctx->state[7] += h;
+	state[0] += a;
+	state[1] += b;
+	state[2] += c;
+	state[3] += d;
+	state[4] += e;
+	state[5] += f;
+	state[6] += g;
+	state[7] += h;
 }
 
 __device__
-void cuda_sha256_init(CUDA_SHA256_CTX *ctx) {
-	ctx->datalen = 0;
-	ctx->bitlen = 0;
-	ctx->state[0] = 0x6a09e667;
-	ctx->state[1] = 0xbb67ae85;
-	ctx->state[2] = 0x3c6ef372;
-	ctx->state[3] = 0xa54ff53a;
-	ctx->state[4] = 0x510e527f;
-	ctx->state[5] = 0x9b05688c;
-	ctx->state[6] = 0x1f83d9ab;
-	ctx->state[7] = 0x5be0cd19;
+HashContext::HashContext() {
+	datalen = 0;
+	bitlen = 0;
+	state[0] = 0x6a09e667;
+	state[1] = 0xbb67ae85;
+	state[2] = 0x3c6ef372;
+	state[3] = 0xa54ff53a;
+	state[4] = 0x510e527f;
+	state[5] = 0x9b05688c;
+	state[6] = 0x1f83d9ab;
+	state[7] = 0x5be0cd19;
 }
 
 __device__
-void cuda_sha256_update(CUDA_SHA256_CTX *ctx, const BYTE data[], size_t len) {
+void HashContext::update(const BYTE incoming[], size_t len) {
 	for (size_t i = 0; i < len; ++i) {
-		ctx->data[ctx->datalen] = data[i];
-		ctx->datalen++;
-		if (ctx->datalen == 64) {
-			cuda_sha256_transform(ctx, ctx->data);
-			ctx->bitlen += 512;
-			ctx->datalen = 0;
+		data[datalen] = incoming[i];
+		datalen++;
+		if (datalen == 64) {
+			transform();
+			bitlen += 512;
+			datalen = 0;
 		}
 	}
 }
 
 __device__
-void cuda_sha256_final(CUDA_SHA256_CTX *ctx, BYTE hash[]) {
-	WORD i = ctx->datalen;
+void HashContext::digest(BYTE hash[]) {
+	WORD i = datalen;
 
 	// Pad whatever data is left in the buffer.
-	if (ctx->datalen < 56) {
-		ctx->data[i++] = 0x80;
+	if (datalen < 56) {
+		data[i++] = 0x80;
 		while (i < 56) {
-			ctx->data[i++] = 0x00;
+			data[i++] = 0x00;
 		}
 	} else {
-		ctx->data[i++] = 0x80;
+		data[i++] = 0x80;
 		while (i < 64) {
-			ctx->data[i++] = 0x00;
+			data[i++] = 0x00;
 		}
-		cuda_sha256_transform(ctx, ctx->data);
-		memset(ctx->data, 0, 56);
+		transform();
+		memset(data, 0, 56);
 	}
 
 	// Append to the padding the total message's length in bits and transform.
-	ctx->bitlen += ctx->datalen * 8;
-	ctx->data[63] = ctx->bitlen;
-	ctx->data[62] = ctx->bitlen >> 8;
-	ctx->data[61] = ctx->bitlen >> 16;
-	ctx->data[60] = ctx->bitlen >> 24;
-	ctx->data[59] = ctx->bitlen >> 32;
-	ctx->data[58] = ctx->bitlen >> 40;
-	ctx->data[57] = ctx->bitlen >> 48;
-	ctx->data[56] = ctx->bitlen >> 56;
-	cuda_sha256_transform(ctx, ctx->data);
+	bitlen += datalen * 8;
+	data[63] = bitlen;
+	data[62] = bitlen >> 8;
+	data[61] = bitlen >> 16;
+	data[60] = bitlen >> 24;
+	data[59] = bitlen >> 32;
+	data[58] = bitlen >> 40;
+	data[57] = bitlen >> 48;
+	data[56] = bitlen >> 56;
+	transform();
 
 	// Since this implementation uses little endian byte ordering and SHA uses big endian,
 	// reverse all the bytes when copying the final state to the output hash.
 	for (i = 0; i < 4; ++i) {
-		hash[i]      = (ctx->state[0] >> (24 - i * 8)) & 0x000000ff;
-		hash[i + 4]  = (ctx->state[1] >> (24 - i * 8)) & 0x000000ff;
-		hash[i + 8]  = (ctx->state[2] >> (24 - i * 8)) & 0x000000ff;
-		hash[i + 12] = (ctx->state[3] >> (24 - i * 8)) & 0x000000ff;
-		hash[i + 16] = (ctx->state[4] >> (24 - i * 8)) & 0x000000ff;
-		hash[i + 20] = (ctx->state[5] >> (24 - i * 8)) & 0x000000ff;
-		hash[i + 24] = (ctx->state[6] >> (24 - i * 8)) & 0x000000ff;
-		hash[i + 28] = (ctx->state[7] >> (24 - i * 8)) & 0x000000ff;
+		hash[i]      = (state[0] >> (24 - i * 8)) & 0x000000ff;
+		hash[i + 4]  = (state[1] >> (24 - i * 8)) & 0x000000ff;
+		hash[i + 8]  = (state[2] >> (24 - i * 8)) & 0x000000ff;
+		hash[i + 12] = (state[3] >> (24 - i * 8)) & 0x000000ff;
+		hash[i + 16] = (state[4] >> (24 - i * 8)) & 0x000000ff;
+		hash[i + 20] = (state[5] >> (24 - i * 8)) & 0x000000ff;
+		hash[i + 24] = (state[6] >> (24 - i * 8)) & 0x000000ff;
+		hash[i + 28] = (state[7] >> (24 - i * 8)) & 0x000000ff;
 	}
 }
 
@@ -178,10 +167,9 @@ void kernel_sha256_hash(const BYTE* indata, WORD inlen, BYTE* outdata, WORD n_ba
 
 	const BYTE* in = indata + thread * inlen;
 	BYTE* out = outdata + thread * SHA256_BLOCK_SIZE;
-	CUDA_SHA256_CTX ctx;
-	cuda_sha256_init(&ctx);
-	cuda_sha256_update(&ctx, in, inlen);
-	cuda_sha256_final(&ctx, out);
+	HashContext ctx{};
+	ctx.update(in, inlen);
+	ctx.digest(out);
 }
 
 void mcm_cuda_sha256_hash_batch(const BYTE* in, WORD inlen, BYTE* out, WORD n_batch) {

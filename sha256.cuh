@@ -15,6 +15,29 @@
 #pragma once
 #include "config.h"
 
+#define SHA256_BLOCK_SIZE 32 // SHA256 outputs a 32 byte digest
+
+struct HashContext {
+	BYTE data[64];
+	WORD datalen;
+	unsigned long long bitlen;
+	WORD state[8];
+
+	__device__
+	HashContext();
+
+	__device__
+	void update(const BYTE incoming[], size_t len);
+
+	__device__
+	void digest(BYTE hash[]);
+
+private:
+	__device__
+	__forceinline__
+	void transform();
+};
+
 __global__
 void kernel_sha256_hash(const BYTE* indata, WORD inlen, BYTE* outdata, WORD n_batch);
 
