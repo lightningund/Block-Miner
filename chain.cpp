@@ -91,6 +91,8 @@ Receipt recv(udp::socket& us_sock) {
 	Receipt rec;
 	std::array<char, 1024> buf;
 	size_t len = us_sock.receive_from(boost::asio::buffer(buf), rec.sender);
+	if (len == 0) return {};
+
 	rec.received = get_now();
 
 	add_peer(rec.sender);
@@ -115,16 +117,18 @@ Request make_request(udp::socket& us_sock, Peer& recip, string msg, string respo
 
 // Check to see if the new message is the response to any of a list of requests
 // Returns the number of completed requests in the list
-void check_requests(std::vector<Request>& requests, json response, udp::endpoint sender) {
+Request& check_requests(std::vector<Request>& requests, json response, udp::endpoint sender) {
 	for (auto& req : requests) {
 		if (req.done) continue;
 
 		if (same_ep(req.target, sender) && response["type"] == req.response_type) {
 			req.done = true;
 			req.response = response;
-			return;
+			return req;
 		}
 	}
+
+	return {};
 }
 
 size_t count_requests(const std::vector<Request>& requests) {
@@ -258,6 +262,8 @@ int main() {
 	udp::endpoint us_ep = udp::endpoint{udp::v4(), my_port};
 
 	udp::socket us_sock = udp::socket{io_ctxt, us_ep};
+	const int timeout = 2;
+	setsockopt(us_sock.native_handle(), SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout));
 	// us_sock.set_option(rcv_timeout_option{200});
 
 	std::cout << "Made Socket\n";
@@ -296,7 +302,16 @@ int main() {
 	std::cout << "Asked for stats\n";
 
 	while (true) {
+		if (get_now() > next_self_check) {
+			self_check(us_sock);
+		}
+
 		Receipt rec = recv(us_sock);
+		if (rec.msg == "") {
+			std::cout << "Timed Out\n";
+			continue;
+		}
+
 		json incoming = json::parse(rec.msg);
 
 		check_requests(reqs, incoming, rec.sender);
@@ -318,10 +333,6 @@ int main() {
 			// Return stats
 		} else if (incoming["type"] == "STATS_REPLY") {
 			// Update our own stats
-		}
-
-		if (get_now() > next_self_check) {
-			self_check(us_sock);
 		}
 	}
 
