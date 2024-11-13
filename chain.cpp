@@ -164,12 +164,12 @@ Receipt recv(udp::socket& us_sock) {
 	return rec;
 }
 
-Request make_request(udp::socket& us_sock, Peer& recip, string msg, string response_type) {
-	us_sock.send_to(boost::asio::buffer(msg), recip.endpoint);
+Request make_request(udp::socket& us_sock, udp::endpoint& recip, string msg, string response_type) {
+	us_sock.send_to(boost::asio::buffer(msg), recip);
 
 	return Request{
 		.msg = msg,
-		.target = recip.endpoint,
+		.target = recip,
 		.last_send = get_now(),
 		.response_type = response_type,
 	};
@@ -266,7 +266,7 @@ void complete_consensus(udp::socket& us_sock) {
 	for (auto& peer : peers) {
 		if (peer.local_hash == hash && peer.local_height == longest) {
 			for (size_t i = 0; i < longest; ++i) {
-				reqs.push_back(make_request(us_sock, peer, "{\"type\":\"GET_BLOCK\",\"height\":" + std::to_string(i) + "}", "GET_BLOCK_REPLY"));
+				reqs.push_back(make_request(us_sock, peer.endpoint, "{\"type\":\"GET_BLOCK\",\"height\":" + std::to_string(i) + "}", "GET_BLOCK_REPLY"));
 			}
 		}
 	}
@@ -324,7 +324,8 @@ void self_check(udp::socket& us_sock) {
 	std::erase_if(reqs, [](Request r) { return r.tries >= max_tries; });
 }
 
-int main() {
+// Tests the hash on the very first block
+void test_hash() {
 	Block test_block{
 		.minedBy = "Prof!",
 		.messages = {"Keep it", "simple.", "Veni", "vidi", "vici"},
@@ -335,7 +336,52 @@ int main() {
 	};
 
 	hash_block("", test_block);
+}
 
+// Just requests the first 150 blocks from the known peer and verifies them
+void demo_get_chain(udp::socket& us_sock) {
+	udp::resolver resolver{io_ctxt};
+	udp::endpoint silicon = *resolver.resolve({udp::v4(), "silicon.cs.umanitoba.ca", "8999"});
+
+	chain = std::vector<Block>(150);
+
+	for (int i = 0; i < 150; ++i) {
+		reqs.push_back(make_request(us_sock, silicon, "{\"type\":\"GET_BLOCK\",\"height\":" + std::to_string(i) + "}", "GET_BLOCK_REPLY"));
+	}
+
+	while (true) {
+		if (get_now() > next_self_check) {
+			self_check(us_sock);
+		}
+
+		Receipt rec = recv(us_sock);
+		if (rec.msg == "") {
+			std::cout << "Timed Out\n";
+			continue;
+		}
+
+		json incoming = json::parse(rec.msg);
+
+		Request filled = check_requests(reqs, incoming, rec.sender);
+
+		if (filled.done) { // since check_requests returns an empty request if none were filled, done will be false
+			std::cout << reqs.size() << " Requests Left\n";
+			if (filled.response_type == "GET_BLOCK_REPLY") {
+				chain[filled.response["height"]] = filled.response.template get<Block>();
+			}
+
+			// Clear out completed reqs
+			std::erase_if(reqs, [](Request r) { return r.done; });
+		}
+
+		if (!chain_verified && reqs.size() == 0) {
+			std::cout << "Verifying Chain!\n";
+			verify_chain();
+		}
+	}
+}
+
+int main() {
 	std::srand(std::time(nullptr));
 
 	tcp::acceptor acceptor{io_ctxt, tcp::endpoint{tcp::v4(), 50001}};
@@ -374,15 +420,7 @@ int main() {
 
 	std::cout << "Sent Gossip\n";
 
-	for (int i = 0; i < 150; ++i) {
-		reqs.push_back(make_request(us_sock, silicon, "{\"type\":\"GET_BLOCK\",\"height\":" + std::to_string(i) + "}", "GET_BLOCK_REPLY"));
-	}
-
-	while (true) {
-		if (get_now() > next_self_check) {
-			self_check(us_sock);
-		}
-	}
+	// demo_get_chain(us_sock);
 
 	// Wait a while to collect a list of peers
 	std::cout << "Listening for Peers\n";
@@ -403,7 +441,7 @@ int main() {
 	string msg = "{\"type\": \"STATS\"}";
 	in_consensus = true;
 	for (auto&& peer : peers) {
-		reqs.push_back(make_request(us_sock, peer, msg, "STATS_REPLY"));
+		reqs.push_back(make_request(us_sock, peer.endpoint, msg, "STATS_REPLY"));
 	}
 
 	std::cout << "Asked for stats\n";
