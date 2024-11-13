@@ -1,5 +1,5 @@
 /*
- * sha256.cu Implementation of SHA256 Hashing    
+ * sha256.cu Implementation of SHA256 Hashing
  *
  * Date: 12 June 2019
  * Revision: 1
@@ -12,7 +12,7 @@
  * This file is released into the Public Domain.
  */
 
- 
+
 /*************************** HEADER FILES ***************************/
 #include <stdlib.h>
 #include <memory.h>
