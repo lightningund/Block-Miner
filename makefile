@@ -1,20 +1,23 @@
+CPPFLAGS := -g -std=c++20 -Wall
+CUDAFLAGS := --expt-relaxed-constexpr
+
 all: chain.o csha256.o
-	g++ chain.o csha256.o -g -std=c++20 -Wall -o chain.out
+	g++ $^ -o chain.out $(CPPFLAGS)
 
 chain.o: chain.cpp
-	g++ chain.cpp -o chain.o -c -Wall -std=c++20
+	g++ chain.cpp -o chain.o -c $(CPPFLAGS)
 
 csha256.o: csha256.cpp
-	g++ csha256.cpp -o csha256.o -c -Wall -std=c++20
+	g++ csha256.cpp -o csha256.o -c $(CPPFLAGS)
 
-miner: kernel.o sha256.o miner.o
-	nvcc miner.o csha256.o kernel.o sha256.o -o miner.out
+miner: miner.o kernel.o sha256.o
+	nvcc $^ -o miner.out $(CUDAFLAGS)
 
-kernel.o: kernel.cu
-	nvcc kernel.cu -o kernel.o -dc
+dev.o: kernel.cu
+	nvcc kernel.cu -o kernel.o -dc $(CUDAFLAGS)
 
 sha256.o: sha256.cu
-	nvcc sha256.cu -o sha256.o -dc
+	nvcc sha256.cu -o sha256.o -dc $(CUDAFLAGS)
 
 miner.o: miner.cpp
-	g++ miner.cpp -o miner.o -c -Wall -std=c++20
+	g++ miner.cpp -o miner.o -c $(CPPFLAGS)

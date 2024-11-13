@@ -19,7 +19,29 @@ boost::asio::io_context io_ctxt{};
 
 #include "kernel.cuh"
 
+// Tests the hash on the very first block
+void test_hash() {
+	G_Block test_block{
+		.minedBy = "Prof!",
+		.messages = {"Keep it", "simple.", "Veni", "vidi", "vici"},
+		.nonce = "663135608617883",
+		.height = 0,
+		.timestamp = 1730910874,
+		.hash = "75977fa09516d028befa0695e16c93be20271b66630236d38718e35700000000"
+	};
+
+	auto hash = hash_block("", test_block);
+	string hash_str;
+	for (auto byte : hash) {
+		std::cout << std::hex << byte;
+	}
+
+	std::cout << "\n" << test_block.hash << "\n";
+}
+
 int main(int argc, char* argv[]) {
+	test_hash();
+
 	if (argc < 2) {
 		std::cerr << "Please Give me a host idk what to do\n";
 		return -1;

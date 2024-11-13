@@ -12,7 +12,10 @@
  * This file is released into the Public Domain.
  */
 
-
 #pragma once
 #include "config.h"
-void mcm_cuda_sha256_hash_batch(BYTE* in, WORD inlen, BYTE* out, WORD n_batch);
+
+__device__
+void kernel_sha256_hash(const BYTE* indata, WORD inlen, BYTE* outdata, WORD n_batch);
+
+// void mcm_cuda_sha256_hash_batch(const BYTE* in, WORD inlen, BYTE* out, WORD n_batch);
