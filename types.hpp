@@ -1,5 +1,6 @@
 #pragma once
 #include <chrono>
+#include <memory>
 #include <boost/asio.hpp>
 
 #include "json.hpp"
@@ -20,6 +21,12 @@ using stamp_t = long long;
 
 using timepoint = time_point<system_clock>;
 
+extern host_t my_host;
+extern port_t my_port;
+extern name_t my_name;
+extern msg_id_t get_msg_id();
+extern bool same_ep(const udp::endpoint& a, const udp::endpoint& b);
+
 struct Block {
 	string minedBy;
 	std::span<string> messages; // Each message is <=20 characters, max 10 messages
@@ -28,11 +35,6 @@ struct Block {
 	size_t timestamp;
 	string hash;
 };
-
-extern host_t my_host;
-extern port_t my_port;
-extern name_t my_name;
-extern msg_id_t get_msg_id();
 
 struct Gossip {
 	host_t host;
@@ -55,6 +57,10 @@ struct Peer {
 	timepoint last_msg;
 	size_t local_height;
 	string local_hash;
+
+	bool operator==(const Peer& p) const {
+		return same_ep(endpoint, p.endpoint);
+	}
 };
 
 struct Receipt {
@@ -66,7 +72,7 @@ struct Receipt {
 struct Request {
 	bool done;
 	string msg;
-	Peer& target;
+	std::shared_ptr<Peer> target;
 	timepoint last_send;
 	string response_type;
 	json response;

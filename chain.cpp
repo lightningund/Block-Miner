@@ -107,7 +107,7 @@ Request make_request(udp::socket& us_sock, Peer& recip, string msg, string respo
 
 	return Request{
 		.msg = msg,
-		.target = recip,
+		.target = std::shared_ptr<Peer>(&recip),
 		.last_send = get_now(),
 		.response_type = response_type,
 	};
@@ -119,7 +119,7 @@ void check_requests(std::vector<Request>& requests, json response, udp::endpoint
 	for (auto& req : requests) {
 		if (req.done) continue;
 
-		if (same_ep(req.target.endpoint, sender) && response["type"] == req.response_type) {
+		if (same_ep(req.target->endpoint, sender) && response["type"] == req.response_type) {
 			req.done = true;
 			req.response = response;
 			return;
@@ -157,8 +157,8 @@ void complete_consensus(udp::socket& us_sock) {
 	// Find the longest chain
 	for (auto&& req : reqs) {
 		std::cout << req.response << "\n";
-		req.target.local_hash = req.response["hash"];
-		req.target.local_height = req.response["height"];
+		req.target->local_hash = req.response["hash"];
+		req.target->local_height = req.response["height"];
 
 		longest = std::max(longest, req.response["height"].template get<size_t>());
 	}
@@ -222,12 +222,9 @@ void self_check(udp::socket& us_sock) {
 	// Remove peers we haven't heard from
 	for (size_t i = 0; i < peers.size(); ++i) {
 		if (peers[i].last_msg + peer_dead_time < now) {
-			for (size_t j = 0; j < reqs.size(); ++j) {
-				if (reqs[j].target == peers[i]) {
-					reqs.erase(reqs.begin() + j);
-					--j;
-				}
-			}
+			std::erase_if(reqs, [i](Request r) {
+				return peers[i] == *r.target;
+			});
 
 			peers.erase(peers.begin() + i);
 			--i;
@@ -239,7 +236,7 @@ void self_check(udp::socket& us_sock) {
 		if (req.done) continue;
 		if (req.last_send + msg_dead_time < now) {
 			std::cout << "Resending message " << req.msg << "\n";
-			us_sock.send_to(boost::asio::buffer(req.msg), req.target.endpoint);
+			us_sock.send_to(boost::asio::buffer(req.msg), req.target->endpoint);
 			req.last_send = now;
 		}
 	}
