@@ -19,3 +19,5 @@ struct G_Block {
 };
 
 hash_t hash_block(const string& last_hash, const G_Block& block);
+
+void find_nonce(const string& last_hash, const G_Block& block);

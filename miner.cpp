@@ -37,6 +37,8 @@ void test_hash() {
 	}
 
 	std::cout << "\n" << test_block.hash << "\n";
+
+	find_nonce("", test_block);
 }
 
 int main(int argc, char* argv[]) {
