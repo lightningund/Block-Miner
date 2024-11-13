@@ -9,6 +9,8 @@
 #include <map>
 #include <chrono>
 
+#include "csha256.hpp"
+
 #include "types.hpp"
 #include "helpers.hpp"
 
@@ -42,6 +44,30 @@ timepoint last_gossip;
 std::vector<Block> chain{};
 
 bool in_consensus = false;
+bool chain_verified = false;
+
+string hash_block(string last_hash, Block block) {
+	string input = last_hash;
+	input += block.minedBy;
+
+	for (auto&& msg : block.messages) {
+		input += msg;
+	}
+
+	uint64_t casted_stamp = static_cast<uint64_t>(block.timestamp);
+	char* stamp_chars = reinterpret_cast<char*>(&casted_stamp);
+	for (int i = 7; i >= 0; --i) {
+		input += stamp_chars[i];
+	}
+	input += block.nonce;
+
+	std::cout << "Hash Input: " << input << "\n";
+	std::cout << "Input Length: " << input.size() << "\n";
+	string hash = sha256(input);
+	std::cout << "Hash: " << hash << "\n";
+	std::cout << "Target Hash: " << block.hash << "\n";
+	return hash;
+}
 
 void add_peer(udp::endpoint ep) {
 	for (auto&& peer : peers) {
@@ -104,11 +130,16 @@ void add_block(Block b) {
 }
 
 void get_block(udp::socket& us_sock, size_t idx, const udp::endpoint& target) {
-	if (chain.size() > 0 && chain.at(idx).height) {
-		json reply = chain[idx];
-		reply["type"] = "GET_BLOCK_REPLY";
-		std::cout << "Block: " << reply << "\n";
-		us_sock.send_to(boost::asio::buffer(reply.dump()), target);
+	try {
+		if (chain.size() > 0 && chain.at(idx).height) {
+			json reply = chain[idx];
+			reply["type"] = "GET_BLOCK_REPLY";
+			std::cout << "Block: " << reply << "\n";
+			us_sock.send_to(boost::asio::buffer(reply.dump()), target);
+		}
+	}
+	catch(const std::exception& e) {
+		std::cerr << e.what() << '\n';
 	}
 }
 
@@ -170,11 +201,17 @@ size_t count_requests(const std::vector<Request>& requests) {
 }
 
 bool verify_chain() {
+	chain_verified = true;
+
 	string last_hash = "";
 
 	for (auto&& block : chain) {
-		// if (hash(last_hash, block) != block.hash) return false;
-		// last_hash = block.hash;
+		string hash = hash_block(last_hash, block);
+		last_hash = block.hash;
+		if (hash != block.hash) {
+			std::cout << "\n\n\nNOOOOOOO\n\n\n";
+			return false;
+		}
 	}
 
 	return true;
@@ -288,6 +325,17 @@ void self_check(udp::socket& us_sock) {
 }
 
 int main() {
+	Block test_block{
+		.minedBy = "Prof!",
+		.messages = {"Keep it", "simple.", "Veni", "vidi", "vici"},
+		.nonce = "663135608617883",
+		.height = 0,
+		.timestamp = 1730910874,
+		.hash = "75977fa09516d028befa0695e16c93be20271b66630236d38718e35700000000"
+	};
+
+	hash_block("", test_block);
+
 	std::srand(std::time(nullptr));
 
 	tcp::acceptor acceptor{io_ctxt, tcp::endpoint{tcp::v4(), 50001}};
@@ -325,6 +373,16 @@ int main() {
 	make_gossip(us_sock);
 
 	std::cout << "Sent Gossip\n";
+
+	for (int i = 0; i < 150; ++i) {
+		reqs.push_back(make_request(us_sock, silicon, "{\"type\":\"GET_BLOCK\",\"height\":" + std::to_string(i) + "}", "GET_BLOCK_REPLY"));
+	}
+
+	while (true) {
+		if (get_now() > next_self_check) {
+			self_check(us_sock);
+		}
+	}
 
 	// Wait a while to collect a list of peers
 	std::cout << "Listening for Peers\n";
@@ -371,14 +429,21 @@ int main() {
 			if (num_filled == reqs.size()) {
 				complete_consensus(us_sock);
 			}
-		} else if (filled.done) { // since check_requests returns an empty request if none were filled, done will be false
-			std::cout << reqs.size() << " Requests Left\n";
-			if (filled.response_type == "GET_BLOCK_REPLY") {
-				chain[filled.response["height"]] = filled.response.template get<Block>();
+		} else {
+			if (filled.done) { // since check_requests returns an empty request if none were filled, done will be false
+				std::cout << reqs.size() << " Requests Left\n";
+				if (filled.response_type == "GET_BLOCK_REPLY") {
+					chain[filled.response["height"]] = filled.response.template get<Block>();
+				}
+
+				// Clear out completed reqs
+				std::erase_if(reqs, [](Request r) { return r.done; });
 			}
 
-			// Clear out completed reqs
-			std::erase_if(reqs, [](Request r) { return r.done; });
+			if (!chain_verified && reqs.size() == 0) {
+				std::cout << "Verifying Chain!\n";
+				verify_chain();
+			}
 		}
 
 		if (incoming["type"] == "GOSSIP") {
