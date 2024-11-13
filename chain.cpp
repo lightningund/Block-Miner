@@ -93,13 +93,22 @@ void send_stats(udp::socket& us_sock, const udp::endpoint& target) {
 		reply["height"] = chain.size();
 		reply["hash"] = chain[chain.size() - 1].hash;
 		reply["type"] = "STATS_REPLY";
-		std::cout << "Stats: " << reply << "\n";
+		std::cout << "Stats: " << reply << " to " << target.address().to_string() << "\n";
 		us_sock.send_to(boost::asio::buffer(reply.dump()), target);
 	}
 }
 
 void add_block(Block b) {
 
+}
+
+void get_block(udp::socket& us_sock, size_t idx, const udp::endpoint& target) {
+	if (chain.size() > 0 && chain.at(idx).height) {
+		json reply = chain[idx];
+		reply["type"] = "GET_BLOCK_REPLY";
+		std::cout << "Block: " << reply << "\n";
+		us_sock.send_to(boost::asio::buffer(reply.dump()), target);
+	}
 }
 
 // Can receive up to 1024 characters at a time
@@ -365,6 +374,8 @@ int main() {
 			// Update our own stats
 		} else if (incoming["type"] == "ANNOUNCE") {
 			add_block(incoming.template get<Block>());
+		} else if (incoming["type"] == "GET_BLOCK") {
+			get_block(us_sock, incoming["height"], rec.sender);
 		}
 	}
 
