@@ -4,7 +4,7 @@
 #include "kernel.cuh"
 #include "sha256.cuh"
 
-constexpr auto difficulty = 2;
+constexpr auto difficulty = 5;
 constexpr auto nonce_max = 16;
 
 // Wrapper for managed memory objects
@@ -31,29 +31,30 @@ struct Managed {
 	}
 };
 
-// __global__
-// void hash_block(
-// 	const BYTE* input,
-// 	size_t inputlen,
-// 	hash_t* hash
-// ) {
-// 	kernel_sha256_hash<<<1,1>>>(
-// 		reinterpret_cast<const BYTE*>(input),
-// 		inputlen,
-// 		hash->data(),
-// 		1
-// 	);
-// }
+template<size_t len>
+std::ostream& operator<<(std::ostream& os, const std::array<BYTE, len>& data) {
+	for (auto byte : data) {
+		os << std::setfill('0') << std::setw(2) << std::hex << (unsigned int)byte;
+	}
+	return os;
+}
 
 __global__
 void hash_block(const BYTE* input, size_t inputlen, hash_t* hash) {
 	HashContext ctx{};
-	for (int i = 0; i < inputlen; i += 10) {
-		int len = ((i + 10) >= inputlen) ? inputlen - i : 10;
-		ctx.update(&input[i], len);
-	}
+	ctx.update(input, inputlen);
 	ctx.digest(hash->data());
 }
+
+// __global__
+// void hash_block(const BYTE* input, size_t inputlen, hash_t* hash) {
+// 	HashContext ctx{};
+// 	for (int i = 0; i < inputlen; i += 10) {
+// 		int len = ((i + 10) >= inputlen) ? inputlen - i : 10;
+// 		ctx.update(&input[i], len);
+// 	}
+// 	ctx.digest(hash->data());
+// }
 
 hash_t hash_block(const string& last_hash, const G_Block& block) {
 	string input = last_hash;
@@ -76,8 +77,6 @@ hash_t hash_block(const string& last_hash, const G_Block& block) {
 	Managed<hash_t> dev_hash{};
 	hash_block<<<1, 1>>>(dev_input.raw, input.size(), dev_hash.raw);
 
-	cudaDeviceSynchronize();
-
 	hash_t hash;
 	cudaMemcpy(&hash, dev_hash.raw, sizeof(hash_t), cudaMemcpyDeviceToHost);
 
@@ -94,11 +93,9 @@ void test_nonce(
 ) {
 	size_t thread = blockIdx.x * blockDim.x + threadIdx.x + offset * gridDim.x * blockDim.x;
 	BYTE nonce[nonce_max];
-	size_t idx = 0;
-	while (thread > 0 && idx < nonce_max) {
-		nonce[idx] = thread & 0xFF;
+	for (int i = 0; i < nonce_max; ++i) {
+		nonce[i] = (BYTE)thread;
 		thread >>= 16;
-		++idx;
 	}
 	ctx.update(nonce, nonce_max);
 	hash_t temp;
@@ -118,15 +115,14 @@ void test_nonce(
 }
 
 __global__
-void setup(const BYTE* input, size_t input_len, BYTE nonce[], hash_t* hash, size_t* loops) {
+void setup(const BYTE* input, size_t input_len, BYTE nonce[], hash_t* hash) {
 	HashContext ctx{};
 	ctx.update(input, input_len);
 	bool found = false;
-	*loops = 0;
+	size_t loops = 0;
 	while (!found) {
-		test_nonce<<<16, 16>>>(ctx, *loops, nonce, hash, &found);
-		*loops = *loops + 1;
-		cudaDeviceSynchronize();
+		test_nonce<<<256, 256>>>(ctx, loops, nonce, hash, &found);
+		++loops;
 	}
 }
 
@@ -150,24 +146,13 @@ void find_nonce(const string& last_hash, G_Block& block) {
 	Managed<hash_t> dev_hash{};
 	Managed<std::array<BYTE, nonce_max>> dev_nonce{};
 
-	size_t loops = 0;
-	setup<<<1, 1>>>(dev_input.raw, input.size(), dev_nonce.raw->data(), dev_hash.raw, &loops);
-	std::cout << loops << "\n";
-
-	cudaDeviceSynchronize();
-
+	setup<<<1, 1>>>(dev_input.raw, input.size(), dev_nonce.raw->data(), dev_hash.raw);
 	std::array<BYTE, nonce_max> nonce;
 	cudaMemcpy(&nonce, dev_nonce.raw, sizeof(nonce), cudaMemcpyDeviceToHost);
 	hash_t hash;
 	cudaMemcpy(&hash, dev_hash.raw, sizeof(hash), cudaMemcpyDeviceToHost);
-	for (auto byte : nonce) {
-		std::cout << std::setfill('0') << std::setw(2) << std::hex << (unsigned int)byte;
-	}
-	std::cout << "\n";
-	for (auto byte : hash) {
-		std::cout << std::setfill('0') << std::setw(2) << std::hex << (unsigned int)byte;
-	}
-	std::cout << "\n";
+	std::cout << nonce << "\n";
+	std::cout << hash << "\n";
 
 	char buf[2 * nonce_max + 1];
 	buf[2 * nonce_max] = 0;
@@ -178,8 +163,5 @@ void find_nonce(const string& last_hash, G_Block& block) {
 
 	block.nonce = std::string{buf};
 	hash_t real_hash = hash_block(last_hash, block);
-	for (auto byte : real_hash) {
-		std::cout << std::setfill('0') << std::setw(2) << std::hex << (unsigned int)byte;
-	}
-	std::cout << "\n";
+	std::cout << real_hash << "\n";
 }
