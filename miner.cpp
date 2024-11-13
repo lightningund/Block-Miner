@@ -1,4 +1,5 @@
 #include <iostream>
+#include <array>
 
 #include "types.hpp"
 #include "helpers.hpp"
@@ -8,15 +9,15 @@ using json = nlohmann::json;
 
 // For intellisense
 #include <boost/asio.hpp>
-using boost::asio::ip::udp;
+using boost::asio::ip::tcp;
 
 host_t my_host = "127.0.0.1";
-port_t my_port = 50001;
+port_t my_port = 50002;
 name_t my_name = "Ben's GPU";
 
 boost::asio::io_context io_ctxt{};
 
-#include "kernel.hpp"
+#include "kernel.cuh"
 
 int main(int argc, char* argv[]) {
 	if (argc < 2) {
@@ -24,20 +25,23 @@ int main(int argc, char* argv[]) {
 		return -1;
 	}
 
-	udp::endpoint us_ep = udp::endpoint{udp::v4(), my_port};
+	tcp::resolver resolver{io_ctxt};
+	auto points = resolver.resolve(argv[1], "50001");
+	tcp::socket chain{io_ctxt};
+	boost::asio::connect(chain, points);
 
-	udp::socket us_sock = udp::socket{io_ctxt, us_ep};
+	std::array<char, 1024> buf;
+	boost::system::error_code err;
 
-	std::cout << "Made Socket\n";
+	size_t len = chain.read_some(boost::asio::buffer(buf), err);
 
-	my_host = boost::asio::ip::host_name();
+	string resp{buf.data()};
+	resp = resp.substr(0, len);
 
-	std::cout << my_host << "\n";
+	std::cout << resp << "\n";
 
-	udp::resolver resolver{io_ctxt};
-	udp::endpoint chain = *resolver.resolve({udp::v4(), argv[1], "50000"});
-
-	us_sock.send_to(boost::asio::buffer("yo"), chain);
+	string msg = "Sup hoe";
+	chain.send(boost::asio::buffer(msg));
 
 	return 0;
 }

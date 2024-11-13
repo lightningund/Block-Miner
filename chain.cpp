@@ -18,6 +18,7 @@ using json = nlohmann::json;
 // For intellisense
 #include <boost/asio.hpp>
 using boost::asio::ip::udp;
+using boost::asio::ip::tcp;
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Block, minedBy, messages, nonce, height, hash, timestamp)
 
@@ -227,7 +228,7 @@ void complete_consensus(udp::socket& us_sock) {
 
 	for (auto& peer : peers) {
 		if (peer.local_hash == hash && peer.local_height == longest) {
-			for (int i = 0; i < longest; ++i) {
+			for (size_t i = 0; i < longest; ++i) {
 				reqs.push_back(make_request(us_sock, peer, "{\"type\":\"GET_BLOCK\",\"height\":" + std::to_string(i) + "}", "GET_BLOCK_REPLY"));
 			}
 		}
@@ -289,6 +290,20 @@ void self_check(udp::socket& us_sock) {
 int main() {
 	std::srand(std::time(nullptr));
 
+	tcp::acceptor acceptor{io_ctxt, tcp::endpoint{tcp::v4(), 50001}};
+	tcp::socket miner{io_ctxt};
+	std::cout << "Waiting to connect to miner\n";
+	acceptor.accept(miner);
+
+	string to_miner = "Ayo bitch";
+	miner.send(boost::asio::buffer(to_miner));
+	std::cout << "Sent to miner\n";
+	std::array<char, 1024> m_buf{};
+	size_t m_len = miner.receive(boost::asio::buffer(m_buf));
+	string m_resp{m_buf.data()};
+	m_resp = m_resp.substr(0, m_len);
+	std::cout << m_resp << "\n";
+
 	udp::endpoint us_ep = udp::endpoint{udp::v4(), my_port};
 
 	udp::socket us_sock = udp::socket{io_ctxt, us_ep};
@@ -299,6 +314,10 @@ int main() {
 	std::cout << "Made Socket\n";
 
 	my_host = boost::asio::ip::host_name();
+	std::cout << "Our Address: " << my_host << "\n";
+	udp::resolver resolver{io_ctxt};
+	udp::endpoint public_ep = *resolver.resolve({udp::v4(), my_host, std::to_string(my_port)});
+	my_host = public_ep.address().to_string();
 
 	std::cout << "Our Address: " << my_host << "\n";
 	std::cout << "Our Port: " << my_port << "\n";
@@ -345,23 +364,21 @@ int main() {
 		json incoming = json::parse(rec.msg);
 
 		Request filled = check_requests(reqs, incoming, rec.sender);
-		if (filled.done) { // since check_requests returns an empty request if none were filled, done will be false
-			if (in_consensus) {
-				size_t num_filled = count_requests(reqs);
+		if (in_consensus) {
+			size_t num_filled = count_requests(reqs);
 
-				std::cout << num_filled << "/" << reqs.size() << " Requests Filled\n";
-				if (num_filled == reqs.size()) {
-					complete_consensus(us_sock);
-				}
-			} else {
-				std::cout << reqs.size() << " Requests Left\n";
-				if (filled.response_type == "GET_BLOCK_REPLY") {
-					chain[filled.response["height"]] = filled.response.template get<Block>();
-				}
-
-				// Clear out completed reqs
-				std::erase_if(reqs, [](Request r) { return r.done; });
+			std::cout << num_filled << "/" << reqs.size() << " Requests Filled\n";
+			if (num_filled == reqs.size()) {
+				complete_consensus(us_sock);
 			}
+		} else if (filled.done) { // since check_requests returns an empty request if none were filled, done will be false
+			std::cout << reqs.size() << " Requests Left\n";
+			if (filled.response_type == "GET_BLOCK_REPLY") {
+				chain[filled.response["height"]] = filled.response.template get<Block>();
+			}
+
+			// Clear out completed reqs
+			std::erase_if(reqs, [](Request r) { return r.done; });
 		}
 
 		if (incoming["type"] == "GOSSIP") {
@@ -369,6 +386,7 @@ int main() {
 		} else if (incoming["type"] == "GOSSIP_REPLY") {
 			add_peer(incoming["host"], incoming["port"]);
 		} else if (incoming["type"] == "STATS") {
+			std::cout << "OOOO Sending stats\n";
 			send_stats(us_sock, rec.sender);
 		} else if (incoming["type"] == "STATS_REPLY") {
 			// Update our own stats
