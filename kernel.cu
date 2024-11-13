@@ -32,7 +32,7 @@ void hash_block(
 	size_t inputlen,
 	hash_t* hash
 ) {
-	kernel_sha256_hash(
+	kernel_sha256_hash<<<1,1>>>(
 		reinterpret_cast<const BYTE*>(input),
 		inputlen,
 		hash->data(),
@@ -75,7 +75,7 @@ void test_nonce(
 	size_t nonce_len
 ) {
 	hash_t hash;
-	kernel_sha256_hash(
+	kernel_sha256_hash<<<1,1>>>(
 		reinterpret_cast<const BYTE*>(input),
 		input_len,
 		hash.data(),
