@@ -33,7 +33,7 @@ void test_hash() {
 	auto hash = hash_block("", test_block);
 	string hash_str;
 	for (auto byte : hash) {
-		std::cout << std::hex << byte;
+		std::cout << std::setfill('0') << std::setw(2) << std::hex << (unsigned int)byte;
 	}
 
 	std::cout << "\n" << test_block.hash << "\n";
