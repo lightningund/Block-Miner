@@ -107,7 +107,7 @@ Request make_request(udp::socket& us_sock, Peer& recip, string msg, string respo
 
 	return Request{
 		.msg = msg,
-		.target = std::shared_ptr<Peer>(&recip),
+		.target = recip.endpoint,
 		.last_send = get_now(),
 		.response_type = response_type,
 	};
@@ -119,7 +119,7 @@ void check_requests(std::vector<Request>& requests, json response, udp::endpoint
 	for (auto& req : requests) {
 		if (req.done) continue;
 
-		if (same_ep(req.target->endpoint, sender) && response["type"] == req.response_type) {
+		if (same_ep(req.target, sender) && response["type"] == req.response_type) {
 			req.done = true;
 			req.response = response;
 			return;
@@ -157,8 +157,13 @@ void complete_consensus(udp::socket& us_sock) {
 	// Find the longest chain
 	for (auto&& req : reqs) {
 		std::cout << req.response << "\n";
-		req.target->local_hash = req.response["hash"];
-		req.target->local_height = req.response["height"];
+		for (auto& peer : peers) {
+			if (same_ep(peer.endpoint, req.target)) {
+				peer.local_hash = req.response["hash"];
+				peer.local_height = req.response["height"];
+				continue;
+			}
+		}
 
 		longest = std::max(longest, req.response["height"].template get<size_t>());
 	}
@@ -223,7 +228,7 @@ void self_check(udp::socket& us_sock) {
 	for (size_t i = 0; i < peers.size(); ++i) {
 		if (peers[i].last_msg + peer_dead_time < now) {
 			std::erase_if(reqs, [i](Request r) {
-				return peers[i] == *r.target;
+				return same_ep(peers[i].endpoint, r.target);
 			});
 
 			peers.erase(peers.begin() + i);
@@ -235,11 +240,16 @@ void self_check(udp::socket& us_sock) {
 	for (auto& req : reqs) {
 		if (req.done) continue;
 		if (req.last_send + msg_dead_time < now) {
-			std::cout << "Resending message " << req.msg << "\n";
-			us_sock.send_to(boost::asio::buffer(req.msg), req.target->endpoint);
-			req.last_send = now;
+			++req.tries;
+			std::cout << "Resending message " << req.msg << " to " << req.target.address().to_string() << ". Try #" << req.tries << "\n";
+			if (req.tries < max_tries) {
+				us_sock.send_to(boost::asio::buffer(req.msg), req.target);
+				req.last_send = now;
+			}
 		}
 	}
+
+	std::erase_if(reqs, [](Request r) { return r.tries >= max_tries; });
 }
 
 int main() {
@@ -248,7 +258,7 @@ int main() {
 	udp::endpoint us_ep = udp::endpoint{udp::v4(), my_port};
 
 	udp::socket us_sock = udp::socket{io_ctxt, us_ep};
-	us_sock.set_option(rcv_timeout_option{200});
+	// us_sock.set_option(rcv_timeout_option{200});
 
 	std::cout << "Made Socket\n";
 

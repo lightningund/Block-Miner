@@ -72,8 +72,9 @@ struct Receipt {
 struct Request {
 	bool done;
 	string msg;
-	std::shared_ptr<Peer> target;
+	udp::endpoint target;
 	timepoint last_send;
+	size_t tries;
 	string response_type;
 	json response;
 };
