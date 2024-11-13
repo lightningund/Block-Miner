@@ -1,5 +1,6 @@
 /*
  * Updated to C++, zedwood.com 2012
+ * Reformatted by Ben Love, 2024
  * Based on Olivier Gay's version
  * See Modified BSD License below:
  *
@@ -58,25 +59,23 @@ const unsigned int SHA256::sha256_k[64] = { //UL = uint32
 	0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
 };
 
-void SHA256::transform(const unsigned char *message, unsigned int block_nb) {
+void SHA256::transform(const unsigned char* message, unsigned int block_nb) {
 	uint32 w[64];
 	uint32 wv[8];
 	uint32 t1, t2;
-	const unsigned char *sub_block;
-	int i;
-	int j;
-	for (i = 0; i < (int) block_nb; i++) {
+	const unsigned char* sub_block;
+	for (int i = 0; i < (int) block_nb; i++) {
 		sub_block = message + (i << 6);
-		for (j = 0; j < 16; j++) {
+		for (int j = 0; j < 16; j++) {
 			SHA2_PACK32(&sub_block[j << 2], &w[j]);
 		}
-		for (j = 16; j < 64; j++) {
-			w[j] =  SHA256_F4(w[j -  2]) + w[j -  7] + SHA256_F3(w[j - 15]) + w[j - 16];
+		for (int j = 16; j < 64; j++) {
+			w[j] = SHA256_F4(w[j -  2]) + w[j -  7] + SHA256_F3(w[j - 15]) + w[j - 16];
 		}
-		for (j = 0; j < 8; j++) {
+		for (int j = 0; j < 8; j++) {
 			wv[j] = m_h[j];
 		}
-		for (j = 0; j < 64; j++) {
+		for (int j = 0; j < 64; j++) {
 			t1 = wv[7] + SHA256_F2(wv[4]) + SHA2_CH(wv[4], wv[5], wv[6]) + sha256_k[j] + w[j];
 			t2 = SHA256_F1(wv[0]) + SHA2_MAJ(wv[0], wv[1], wv[2]);
 			wv[7] = wv[6];
@@ -88,7 +87,7 @@ void SHA256::transform(const unsigned char *message, unsigned int block_nb) {
 			wv[1] = wv[0];
 			wv[0] = t1 + t2;
 		}
-		for (j = 0; j < 8; j++) {
+		for (int j = 0; j < 8; j++) {
 			m_h[j] += wv[j];
 		}
 	}
@@ -107,20 +106,17 @@ void SHA256::init() {
 	m_tot_len = 0;
 }
 
-void SHA256::update(const unsigned char *message, unsigned int len) {
-	unsigned int block_nb;
-	unsigned int new_len, rem_len, tmp_len;
-	const unsigned char *shifted_message;
-	tmp_len = SHA224_256_BLOCK_SIZE - m_len;
-	rem_len = len < tmp_len ? len : tmp_len;
+void SHA256::update(const unsigned char* message, unsigned int len) {
+	unsigned int tmp_len = SHA224_256_BLOCK_SIZE - m_len;
+	unsigned int rem_len = len < tmp_len ? len : tmp_len;
 	memcpy(&m_block[m_len], message, rem_len);
 	if (m_len + len < SHA224_256_BLOCK_SIZE) {
 		m_len += len;
 		return;
 	}
-	new_len = len - rem_len;
-	block_nb = new_len / SHA224_256_BLOCK_SIZE;
-	shifted_message = message + rem_len;
+	unsigned int new_len = len - rem_len;
+	unsigned int block_nb = new_len / SHA224_256_BLOCK_SIZE;
+	const unsigned char* shifted_message = message + rem_len;
 	transform(m_block, 1);
 	transform(shifted_message, block_nb);
 	rem_len = new_len % SHA224_256_BLOCK_SIZE;
@@ -129,7 +125,7 @@ void SHA256::update(const unsigned char *message, unsigned int len) {
 	m_tot_len += (block_nb + 1) << 6;
 }
 
-void SHA256::final(unsigned char *digest) {
+void SHA256::final(unsigned char* digest) {
 	unsigned int block_nb;
 	unsigned int pm_len;
 	unsigned int len_b;
@@ -148,17 +144,19 @@ void SHA256::final(unsigned char *digest) {
 
 std::string sha256(std::string input) {
 	unsigned char digest[SHA256::DIGEST_SIZE];
-	memset(digest,0,SHA256::DIGEST_SIZE);
+	memset(digest, 0, SHA256::DIGEST_SIZE);
 
 	SHA256 ctx = SHA256();
 	ctx.init();
-	ctx.update( (unsigned char*)input.c_str(), input.length());
+	ctx.update((unsigned char*)input.c_str(), input.length());
 	ctx.final(digest);
 
-	char buf[2*SHA256::DIGEST_SIZE+1];
-	buf[2*SHA256::DIGEST_SIZE] = 0;
+	char buf[2 * SHA256::DIGEST_SIZE+1];
+	buf[2 * SHA256::DIGEST_SIZE] = 0;
+
 	for (int i = 0; i < SHA256::DIGEST_SIZE; i++) {
-		sprintf(buf+i*2, "%02x", digest[i]);
+		sprintf(buf + i * 2, "%02x", digest[i]);
 	}
+
 	return std::string(buf);
 }
