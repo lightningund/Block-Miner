@@ -55,14 +55,17 @@ __constant__ WORD k[64] = {
 };
 
 /*********************** FUNCTION DEFINITIONS ***********************/
-__device__  __forceinline__ void cuda_sha256_transform(CUDA_SHA256_CTX *ctx, const BYTE data[])
-{
+__device__
+__forceinline__
+void cuda_sha256_transform(CUDA_SHA256_CTX *ctx, const BYTE data[]) {
 	WORD a, b, c, d, e, f, g, h, i, j, t1, t2, m[64];
 
-	for (i = 0, j = 0; i < 16; ++i, j += 4)
+	for (i = 0, j = 0; i < 16; ++i, j += 4) {
 		m[i] = (data[j] << 24) | (data[j + 1] << 16) | (data[j + 2] << 8) | (data[j + 3]);
-	for ( ; i < 64; ++i)
+	}
+	for ( ; i < 64; ++i) {
 		m[i] = SIG1(m[i - 2]) + m[i - 7] + SIG0(m[i - 15]) + m[i - 16];
+	}
 
 	a = ctx->state[0];
 	b = ctx->state[1];
@@ -96,8 +99,8 @@ __device__  __forceinline__ void cuda_sha256_transform(CUDA_SHA256_CTX *ctx, con
 	ctx->state[7] += h;
 }
 
-__device__ void cuda_sha256_init(CUDA_SHA256_CTX *ctx)
-{
+__device__
+void cuda_sha256_init(CUDA_SHA256_CTX *ctx) {
 	ctx->datalen = 0;
 	ctx->bitlen = 0;
 	ctx->state[0] = 0x6a09e667;
@@ -110,8 +113,8 @@ __device__ void cuda_sha256_init(CUDA_SHA256_CTX *ctx)
 	ctx->state[7] = 0x5be0cd19;
 }
 
-__device__ void cuda_sha256_update(CUDA_SHA256_CTX *ctx, const BYTE data[], size_t len)
-{
+__device__
+void cuda_sha256_update(CUDA_SHA256_CTX *ctx, const BYTE data[], size_t len) {
 	WORD i;
 
 	for (i = 0; i < len; ++i) {
@@ -125,8 +128,8 @@ __device__ void cuda_sha256_update(CUDA_SHA256_CTX *ctx, const BYTE data[], size
 	}
 }
 
-__device__ void cuda_sha256_final(CUDA_SHA256_CTX *ctx, BYTE hash[])
-{
+__device__
+void cuda_sha256_final(CUDA_SHA256_CTX *ctx, BYTE hash[]) {
 	WORD i;
 
 	i = ctx->datalen;
@@ -134,13 +137,14 @@ __device__ void cuda_sha256_final(CUDA_SHA256_CTX *ctx, BYTE hash[])
 	// Pad whatever data is left in the buffer.
 	if (ctx->datalen < 56) {
 		ctx->data[i++] = 0x80;
-		while (i < 56)
+		while (i < 56) {
 			ctx->data[i++] = 0x00;
-	}
-	else {
+		}
+	} else {
 		ctx->data[i++] = 0x80;
-		while (i < 64)
+		while (i < 64) {
 			ctx->data[i++] = 0x00;
+		}
 		cuda_sha256_transform(ctx, ctx->data);
 		memset(ctx->data, 0, 56);
 	}
@@ -171,13 +175,11 @@ __device__ void cuda_sha256_final(CUDA_SHA256_CTX *ctx, BYTE hash[])
 	}
 }
 
-__global__ void kernel_sha256_hash(const BYTE* indata, WORD inlen, BYTE* outdata, WORD n_batch)
-{
+__global__
+void kernel_sha256_hash(const BYTE* indata, WORD inlen, BYTE* outdata, WORD n_batch) {
 	WORD thread = blockIdx.x * blockDim.x + threadIdx.x;
-	if (thread >= n_batch)
-	{
-		return;
-	}
+	if (thread >= n_batch) return;
+
 	const BYTE* in = indata + thread * inlen;
 	BYTE* out = outdata + thread * SHA256_BLOCK_SIZE;
 	CUDA_SHA256_CTX ctx;
