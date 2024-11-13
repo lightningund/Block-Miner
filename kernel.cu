@@ -28,7 +28,6 @@ struct Managed {
 
 __global__
 void hash_block(
-	const char* last_hash,
 	const char* input,
 	size_t inputlen,
 	hash_t* hash
@@ -57,15 +56,33 @@ hash_t hash_block(const string& last_hash, const G_Block& block) {
 	}
 	input += block.nonce;
 
-	Managed<char> dev_last_arr{last_hash.size()};
-	dev_last_arr = last_hash.c_str();
 	Managed<char> dev_input{input.size()};
 	dev_input = input.c_str();
 	Managed<hash_t> dev_hash{};
-	hash_block<<<1, 1>>>(dev_last_arr.raw, dev_input.raw, input.size(), dev_hash.raw);
+	hash_block<<<1, 1>>>(dev_input.raw, input.size(), dev_hash.raw);
 
 	hash_t hash;
 	cudaMemcpy(&hash, dev_hash.raw, sizeof(hash_t), cudaMemcpyDeviceToHost);
 
 	return hash;
+}
+
+__global__
+void test_nonce(
+	const char* input,
+	size_t input_len,
+	char* nonce,
+	size_t nonce_len
+) {
+	hash_t hash;
+	kernel_sha256_hash(
+		reinterpret_cast<const BYTE*>(input),
+		input_len,
+		hash.data(),
+		1
+	);
+}
+
+string find_nonce(const string& last_hash, const G_Block& block) {
+	return "";
 }

@@ -171,42 +171,38 @@ __device__ void cuda_sha256_final(CUDA_SHA256_CTX *ctx, BYTE hash[])
 	}
 }
 
-__device__ void kernel_sha256_hash(const BYTE* indata, WORD inlen, BYTE* outdata, WORD n_batch)
+__global__ void kernel_sha256_hash(const BYTE* indata, WORD inlen, BYTE* outdata, WORD n_batch)
 {
 	WORD thread = blockIdx.x * blockDim.x + threadIdx.x;
 	if (thread >= n_batch)
 	{
 		return;
 	}
-	const BYTE* in = indata  + thread * inlen;
-	BYTE* out = outdata  + thread * SHA256_BLOCK_SIZE;
+	const BYTE* in = indata + thread * inlen;
+	BYTE* out = outdata + thread * SHA256_BLOCK_SIZE;
 	CUDA_SHA256_CTX ctx;
 	cuda_sha256_init(&ctx);
 	cuda_sha256_update(&ctx, in, inlen);
 	cuda_sha256_final(&ctx, out);
 }
 
-// extern "C"
-// {
-// void mcm_cuda_sha256_hash_batch(const BYTE* in, WORD inlen, BYTE* out, WORD n_batch)
-// {
-// 	BYTE *cuda_indata;
-// 	BYTE *cuda_outdata;
-// 	cudaMalloc(&cuda_indata, inlen * n_batch);
-// 	cudaMalloc(&cuda_outdata, SHA256_BLOCK_SIZE * n_batch);
-// 	cudaMemcpy(cuda_indata, in, inlen * n_batch, cudaMemcpyHostToDevice);
+void mcm_cuda_sha256_hash_batch(const BYTE* in, WORD inlen, BYTE* out, WORD n_batch) {
+	BYTE *cuda_indata;
+	BYTE *cuda_outdata;
+	cudaMalloc(&cuda_indata, inlen * n_batch);
+	cudaMalloc(&cuda_outdata, SHA256_BLOCK_SIZE * n_batch);
+	cudaMemcpy(cuda_indata, in, inlen * n_batch, cudaMemcpyHostToDevice);
 
-// 	WORD thread = 256;
-// 	WORD block = (n_batch + thread - 1) / thread;
+	WORD thread = 256;
+	WORD block = (n_batch + thread - 1) / thread;
 
-// 	kernel_sha256_hash << < block, thread >> > (cuda_indata, inlen, cuda_outdata, n_batch);
-// 	cudaMemcpy(out, cuda_outdata, SHA256_BLOCK_SIZE * n_batch, cudaMemcpyDeviceToHost);
-// 	cudaDeviceSynchronize();
-// 	cudaError_t error = cudaGetLastError();
-// 	if (error != cudaSuccess) {
-// 		printf("Error cuda sha256 hash: %s \n", cudaGetErrorString(error));
-// 	}
-// 	cudaFree(cuda_indata);
-// 	cudaFree(cuda_outdata);
-// }
-// }
+	kernel_sha256_hash<<<block, thread>>>(cuda_indata, inlen, cuda_outdata, n_batch);
+	cudaMemcpy(out, cuda_outdata, SHA256_BLOCK_SIZE * n_batch, cudaMemcpyDeviceToHost);
+	cudaDeviceSynchronize();
+	cudaError_t error = cudaGetLastError();
+	if (error != cudaSuccess) {
+		printf("Error cuda sha256 hash: %s \n", cudaGetErrorString(error));
+	}
+	cudaFree(cuda_indata);
+	cudaFree(cuda_outdata);
+}

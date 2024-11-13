@@ -15,7 +15,7 @@
 #pragma once
 #include "config.h"
 
-__device__
+__global__
 void kernel_sha256_hash(const BYTE* indata, WORD inlen, BYTE* outdata, WORD n_batch);
 
-// void mcm_cuda_sha256_hash_batch(const BYTE* in, WORD inlen, BYTE* out, WORD n_batch);
+void mcm_cuda_sha256_hash_batch(const BYTE* in, WORD inlen, BYTE* out, WORD n_batch);
