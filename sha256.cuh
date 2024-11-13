@@ -18,6 +18,7 @@
 #define SHA256_BLOCK_SIZE 32 // SHA256 outputs a 32 byte digest
 
 struct HashContext {
+	static constexpr size_t DIGEST_SIZE = 32;
 	BYTE data[64];
 	WORD datalen;
 	unsigned long long bitlen;

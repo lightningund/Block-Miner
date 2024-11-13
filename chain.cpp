@@ -29,7 +29,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Gossip, host, port, name, id)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(GossipReply, host, port, name)
 
 host_t my_host = "127.0.0.1";
-port_t my_port = 50000;
+port_t my_port = 8470;
 name_t my_name = "Ben's Computer";
 
 boost::asio::io_context io_ctxt{};
