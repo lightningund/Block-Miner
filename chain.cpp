@@ -23,6 +23,8 @@ using json = nlohmann::json;
 using boost::asio::ip::udp;
 using boost::asio::ip::tcp;
 
+constexpr auto known_host = "ember.cs.umanitoba.ca";
+
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Block, minedBy, messages, nonce, height, hash, timestamp)
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Gossip, host, port, name, id)
@@ -231,7 +233,7 @@ bool verify_chain() {
 	for (int i = 0; i < chain.size(); ++i) {
 		try {
 			if (chain.at(i).hash == "") {
-				std::cout << "\n\n\nNOOOOOOO\n\n\n";
+				std::cout << "\n\n\nNOOOOOOO block in chain where there should be\n\n\n";
 				chain.erase(chain.begin() + i, chain.end());
 				return true;
 			}
@@ -241,13 +243,13 @@ bool verify_chain() {
 			string hash = hash_block(last_hash, block);
 			last_hash = block.hash;
 			if (hash != block.hash) {
-				std::cout << "\n\n\nNOOOOOOO\n\n\n";
+				std::cout << "\n\n\nNOOOOOOO!! hash mismatch!!!!\n\n\n";
 				chain.erase(chain.begin() + i, chain.end());
 				return true;
 			}
 		} catch(const std::exception& e) {
-			std::cerr << e.what() << '\n';
-			std::cout << "\n\n\nNOOOOOOO\n\n\n";
+			std::cerr << e.what() << "\n";
+			std::cout << "\n\n\nNOOOOOOO!! An error or exception or some kind of unexpected and unhandled circumstance!\n\n\n";
 			chain.erase(chain.begin() + i, chain.end());
 			return true;
 		}
@@ -322,7 +324,7 @@ void complete_consensus(udp::socket& us_sock) {
 void make_gossip(udp::socket& us_sock) {
 	std::cout << "Generating Gossip\n";
 	udp::resolver resolver{io_ctxt};
-	udp::endpoint silicon = *resolver.resolve({udp::v4(), "silicon.cs.umanitoba.ca", "8999"});
+	udp::endpoint silicon = *resolver.resolve({udp::v4(), known_host, "8999"});
 
 	std::cout << silicon.address().to_string() << "\n";
 
@@ -640,10 +642,10 @@ int main(int argc, char* argv[]) {
 	}
 
 	// us_sock.set_option(boost::asio::detail::socket_option::integer<SOL_SOCKET, SO_RCVTIMEO>{ 200 });
-	// timeval timeout;
-	// timeout.tv_usec = 0;
-	// timeout.tv_sec = 2;
-	// setsockopt(us_sock.native_handle(), SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout));
+	timeval timeout;
+	timeout.tv_usec = 0;
+	timeout.tv_sec = 2;
+	setsockopt(us_sock.native_handle(), SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout));
 	// setsockopt(miner.native_handle(), SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout));
 
 	std::cout << "Our Address: " << my_host << "\n";

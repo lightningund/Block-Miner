@@ -105,7 +105,7 @@ void test_nonce(
 	hash_t* hash,
 	bool* found
 ) {
-	uint64_t thread = blockIdx.x * blockDim.x + threadIdx.x + (uint64_t)offset * gridDim.x * blockDim.x;
+	size_t thread = blockIdx.x * blockDim.x + threadIdx.x + offset * gridDim.x * blockDim.x;
 	BYTE nonce[nonce_max];
 	for (int i = 0; i < nonce_max; ++i) {
 		nonce[i] = 'A' + (thread & 0xF);
