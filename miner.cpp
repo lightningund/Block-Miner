@@ -1,6 +1,8 @@
 #include <iostream>
 #include <array>
 
+#include "csha256.hpp"
+
 #include "types.hpp"
 #include "helpers.hpp"
 
@@ -18,6 +20,29 @@ name_t my_name = "Ben's GPU";
 boost::asio::io_context io_ctxt{};
 
 #include "kernel.cuh"
+
+string host_hash_block(string last_hash, G_Block block) {
+	string input = last_hash;
+	input += block.minedBy;
+
+	for (auto&& msg : block.messages) {
+		input += msg;
+	}
+
+	uint64_t casted_stamp = static_cast<uint64_t>(block.timestamp);
+	char* stamp_chars = reinterpret_cast<char*>(&casted_stamp);
+	for (int i = 7; i >= 0; --i) {
+		input += stamp_chars[i];
+	}
+	input += block.nonce;
+
+	std::cout << "Hash Input: " << input << "\n";
+	std::cout << "Input Length: " << input.size() << "\n";
+	string hash = sha256(input);
+	std::cout << "Hash: " << hash << "\n";
+	std::cout << "Target Hash: " << block.hash << "\n";
+	return hash;
+}
 
 // Tests the hash on the very first block
 void test_hash() {
@@ -39,6 +64,8 @@ void test_hash() {
 	std::cout << "\n" << test_block.hash << "\n";
 
 	find_nonce("", test_block);
+
+	host_hash_block("", test_block);
 }
 
 int main(int argc, char* argv[]) {

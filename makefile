@@ -9,7 +9,7 @@ CUDAOBJS := $(CUDASRCS:.cu=.o)
 all: chain.o csha256.o
 	g++ $^ -o chain.out $(CPPFLAGS)
 
-miner: miner.o kernel.o sha256.o
+miner: miner.o kernel.o sha256.o csha256.o
 	nvcc $^ -o miner.out $(CUDAFLAGS)
 
 $(CPPOBJS): %.o: %.cpp
