@@ -8,7 +8,7 @@ constexpr auto msg_dead_time = 10s;
 constexpr auto peer_dead_time = 1min;
 constexpr auto re_gossip_time = 30s;
 constexpr auto self_check_time = 1s;
-constexpr auto mine_check_time = 30s;
+constexpr auto mine_check_time = 1min;
 constexpr auto peer_scan_time = 10s;
 constexpr auto max_tries = 10;
 

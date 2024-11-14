@@ -148,15 +148,18 @@ void HashContext::digest(BYTE hash[]) {
 
 	// Since this implementation uses little endian byte ordering and SHA uses big endian,
 	// reverse all the bytes when copying the final state to the output hash.
-	for (i = 0; i < 4; ++i) {
-		hash[i]      = (state[0] >> (24 - i * 8)) & 0x000000ff;
-		hash[i + 4]  = (state[1] >> (24 - i * 8)) & 0x000000ff;
-		hash[i + 8]  = (state[2] >> (24 - i * 8)) & 0x000000ff;
-		hash[i + 12] = (state[3] >> (24 - i * 8)) & 0x000000ff;
-		hash[i + 16] = (state[4] >> (24 - i * 8)) & 0x000000ff;
-		hash[i + 20] = (state[5] >> (24 - i * 8)) & 0x000000ff;
-		hash[i + 24] = (state[6] >> (24 - i * 8)) & 0x000000ff;
-		hash[i + 28] = (state[7] >> (24 - i * 8)) & 0x000000ff;
+	for (int j = 0; j < 8; ++j) {
+		for (i = 0; i < 4; ++i) {
+			hash[i + j * 4] = (state[j] >> (24 - i * 8)) & 0xFF;
+			// hash[i]      = (state[0] >> (24 - i * 8)) & 0x000000ff;
+			// hash[i + 4]  = (state[1] >> (24 - i * 8)) & 0x000000ff;
+			// hash[i + 8]  = (state[2] >> (24 - i * 8)) & 0x000000ff;
+			// hash[i + 12] = (state[3] >> (24 - i * 8)) & 0x000000ff;
+			// hash[i + 16] = (state[4] >> (24 - i * 8)) & 0x000000ff;
+			// hash[i + 20] = (state[5] >> (24 - i * 8)) & 0x000000ff;
+			// hash[i + 24] = (state[6] >> (24 - i * 8)) & 0x000000ff;
+			// hash[i + 28] = (state[7] >> (24 - i * 8)) & 0x000000ff;
+		}
 	}
 }
 

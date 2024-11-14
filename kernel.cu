@@ -4,8 +4,8 @@
 #include "kernel.cuh"
 #include "sha256.cuh"
 
-constexpr auto difficulty = 8;
-constexpr auto nonce_max = 32;
+constexpr auto difficulty = 9;
+constexpr auto nonce_max = 16;
 
 // Wrapper for managed memory objects
 template <typename T>
@@ -105,7 +105,7 @@ void test_nonce(
 	hash_t* hash,
 	bool* found
 ) {
-	size_t thread = blockIdx.x * blockDim.x + threadIdx.x + offset * gridDim.x * blockDim.x;
+	uint64_t thread = blockIdx.x * blockDim.x + threadIdx.x + (uint64_t)offset * gridDim.x * blockDim.x;
 	BYTE nonce[nonce_max];
 	for (int i = 0; i < nonce_max; ++i) {
 		nonce[i] = 'A' + (thread & 0xF);
@@ -147,6 +147,10 @@ void setup(const BYTE input[], size_t input_len, BYTE nonce[], hash_t* hash, siz
 }
 
 void find_nonce(const string& last_hash, Block& block) {
+	cudaEvent_t start, stop;
+	cudaEventCreate(&start);
+	cudaEventCreate(&stop);
+	cudaEventRecord(start);
 	string input = last_hash;
 	// input += "Ben's GPU";
 	input += block.minedBy;
@@ -185,4 +189,9 @@ void find_nonce(const string& last_hash, Block& block) {
 	std::cout << block.nonce << "\n";
 	std::cout << std::dec << block.nonce.size() << "\n";
 	block.hash = hash_to_string(hash);
+	cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    float time;
+    cudaEventElapsedTime(&time, start, stop);
+	std::cout << "Finding the nonce took: " << time << " ms\n";
 }
