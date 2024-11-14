@@ -58,8 +58,8 @@ void hash_block(const BYTE* input, size_t inputlen, hash_t* hash) {
 
 hash_t hash_block(const string& last_hash, const Block& block) {
 	string input = last_hash;
-	input += "Ben's GPU";
-	// input += block.minedBy;
+	// input += "Ben's GPU";
+	input += block.minedBy;
 
 	for (auto&& msg : block.messages) {
 		input += msg;

@@ -105,6 +105,7 @@ int main(int argc, char* argv[]) {
 	std::cout << last_hash << "\n";
 
 	Block curr_block{
+		.minedBy = "Ben's GPU",
 		.messages = {
 			"According to all",
 			"known laws of",
@@ -129,6 +130,8 @@ int main(int argc, char* argv[]) {
 		std::cout << block << "\n";
 		chain.send(boost::asio::buffer(block.dump()));
 		curr_block.timestamp++;
+		// Block until we read something
+		len = chain.read_some(boost::asio::buffer(buf), err);
 	}
 
 	return 0;
