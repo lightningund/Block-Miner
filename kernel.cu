@@ -4,7 +4,7 @@
 #include "kernel.cuh"
 #include "sha256.cuh"
 
-constexpr auto difficulty = 2;
+constexpr auto difficulty = 8;
 constexpr auto nonce_max = 16;
 
 // Wrapper for managed memory objects
@@ -56,10 +56,10 @@ void hash_block(const BYTE* input, size_t inputlen, hash_t* hash) {
 // 	ctx.digest(hash->data());
 // }
 
-hash_t hash_block(const string& last_hash, const G_Block& block) {
+hash_t hash_block(const string& last_hash, const Block& block) {
 	string input = last_hash;
-	// input += "Ben's GPU";
-	input += block.minedBy;
+	input += "Ben's GPU";
+	// input += block.minedBy;
 
 	for (auto&& msg : block.messages) {
 		input += msg;
@@ -84,6 +84,17 @@ hash_t hash_block(const string& last_hash, const G_Block& block) {
 	return hash;
 }
 
+string hash_to_string(const hash_t& hash) {
+	char buf[2 * HashContext::DIGEST_SIZE + 1];
+	buf[2 * HashContext::DIGEST_SIZE] = 0;
+
+	for (int i = 0; i < HashContext::DIGEST_SIZE; i++) {
+		sprintf(buf + i * 2, "%02x", hash[i]);
+	}
+
+	return string{buf};
+}
+
 __global__
 void test_nonce(
 	// const BYTE input[],
@@ -96,15 +107,13 @@ void test_nonce(
 ) {
 	size_t thread = blockIdx.x * blockDim.x + threadIdx.x + offset * gridDim.x * blockDim.x;
 	BYTE nonce[nonce_max];
-	memset(nonce, 0, nonce_max);
-	for (int i = 0; i < nonce_max && thread > 0; ++i) {
-		nonce[nonce_max - i - 1] = (BYTE)thread;
-		thread >>= 16;
+	for (int i = 0; i < nonce_max; ++i) {
+		nonce[i] = 'A' + (thread & 0xF);
+		thread >>= 4;
 	}
 	// HashContext ctx{};
 	// ctx.update(input, input_len);
 	ctx.update(nonce, nonce_max);
-	// ctx.update("663135608617883", 15);
 	hash_t temp;
 	ctx.digest(temp.data());
 	for (int i = 0; i < difficulty / 2; ++i) {
@@ -133,12 +142,11 @@ void setup(const BYTE input[], size_t input_len, BYTE nonce[], hash_t* hash, siz
 		test_nonce<<<256, 256>>>(ctx, *loops, nonce, hash, found);
 		cudaDeviceSynchronize();
 		++(*loops);
-		*found = true;
 	}
 	free(found);
 }
 
-void find_nonce(const string& last_hash, G_Block& block) {
+void find_nonce(const string& last_hash, Block& block) {
 	string input = last_hash;
 	// input += "Ben's GPU";
 	input += block.minedBy;
@@ -172,8 +180,6 @@ void find_nonce(const string& last_hash, G_Block& block) {
 	std::cout << hash << "\n";
 
 	block.nonce = std::string{reinterpret_cast<char*>(nonce.data())};
-	std::cout << block.nonce.size() << "\n";
-	std::cout << std::dec << nonce.size() << "\n";
-	hash_t real_hash = hash_block(last_hash, block);
-	std::cout << real_hash << "\n";
+	std::cout << block.nonce << "\n";
+	block.hash = hash_to_string(hash);
 }

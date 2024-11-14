@@ -3,6 +3,7 @@
 #include <memory>
 #include <vector>
 #include <boost/asio.hpp>
+#include "shared.hpp"
 
 #include "json.hpp"
 using json = nlohmann::json;
@@ -27,15 +28,6 @@ extern port_t my_port;
 extern name_t my_name;
 extern msg_id_t get_msg_id();
 extern bool same_ep(const udp::endpoint& a, const udp::endpoint& b);
-
-struct Block {
-	string minedBy;
-	std::vector<string> messages; // Each message is <=20 characters, max 10 messages
-	string nonce; // Must be under 40 characters
-	size_t height;
-	size_t timestamp;
-	string hash;
-};
 
 struct Gossip {
 	host_t host;

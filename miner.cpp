@@ -9,6 +9,8 @@
 #include "json.hpp"
 using json = nlohmann::json;
 
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Block, minedBy, messages, nonce, height, hash, timestamp)
+
 // For intellisense
 #include <boost/asio.hpp>
 using boost::asio::ip::tcp;
@@ -21,7 +23,7 @@ boost::asio::io_context io_ctxt{};
 
 #include "kernel.cuh"
 
-string host_hash_block(string last_hash, G_Block block) {
+string host_hash_block(string last_hash, Block block) {
 	string input = last_hash;
 	input += block.minedBy;
 
@@ -46,7 +48,7 @@ string host_hash_block(string last_hash, G_Block block) {
 
 // Tests the hash on the very first block
 void test_hash() {
-	G_Block test_block{
+	Block test_block{
 		.minedBy = "Prof!",
 		.messages = {"Keep it", "simple.", "Veni", "vidi", "vici"},
 		.nonce = "663135608617883",
@@ -93,6 +95,41 @@ int main(int argc, char* argv[]) {
 
 	string msg = "Sup hoe";
 	chain.send(boost::asio::buffer(msg));
+
+	std::cout << "Waiting for last hash\n";
+	len = chain.read_some(boost::asio::buffer(buf), err);
+
+	string last_hash{buf.data()};
+	last_hash = last_hash.substr(0, len);
+
+	std::cout << last_hash << "\n";
+
+	Block curr_block{
+		.messages = {
+			"According to all",
+			"known laws of",
+			"aviation, there is",
+			"no way a bee should",
+			"be able to fly. Its",
+			"wings are too small",
+			"to get its fat",
+			"little body off the",
+			"ground. The bee, of",
+			"course, flies"
+		},
+		.timestamp = 1731520534
+	};
+
+	while (true) {
+		find_nonce(last_hash, curr_block);
+		last_hash = curr_block.hash;
+		std::cout << last_hash << "\n";
+		std::cout << "Sending block to chain\n";
+		json block = curr_block;
+		std::cout << block << "\n";
+		chain.send(boost::asio::buffer(block.dump()));
+		curr_block.timestamp++;
+	}
 
 	return 0;
 }

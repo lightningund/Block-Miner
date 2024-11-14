@@ -45,6 +45,7 @@ std::vector<Block> chain{};
 
 bool in_consensus = false;
 bool chain_verified = false;
+bool new_block_made = false;
 
 string hash_block(string last_hash, Block block) {
 	string input = last_hash;
@@ -338,8 +339,31 @@ void test_hash() {
 	hash_block("", test_block);
 }
 
+void check_for_mine(udp::socket& us_sock, tcp::socket& miner) {
+	std::array<char, 1024> buf{};
+
+	auto mine_ready = [=](const boost::system::error_code& err, size_t len) {
+		std::cout << "Read from miner!\n";
+		if (err || len == 0) return;
+
+		string rec{buf.data()};
+		rec = rec.substr(0, len);
+		std::cout << len << "\n";
+		std::cout << rec << "\n";
+		json block = json::parse(rec);
+		block["height"] = chain.size();
+		Block new_block = block.template get<Block>();
+		chain.push_back(new_block);
+
+		new_block_made = true;
+	};
+
+	std::cout << "Waiting to read from Miner\n";
+	miner.async_read_some(boost::asio::buffer(buf), mine_ready);
+}
+
 // Just requests the first 150 blocks from the known peer and verifies them
-void demo_get_chain(udp::socket& us_sock) {
+void demo_get_chain(udp::socket& us_sock, tcp::socket& miner) {
 	udp::resolver resolver{io_ctxt};
 	udp::endpoint silicon = *resolver.resolve({udp::v4(), "silicon.cs.umanitoba.ca", "8999"});
 
@@ -352,6 +376,10 @@ void demo_get_chain(udp::socket& us_sock) {
 	while (true) {
 		if (get_now() > next_self_check) {
 			self_check(us_sock);
+		}
+
+		if (chain_verified) {
+			check_for_mine(us_sock, miner);
 		}
 
 		Receipt rec = recv(us_sock);
@@ -377,8 +405,13 @@ void demo_get_chain(udp::socket& us_sock) {
 		if (!chain_verified && reqs.size() == 0) {
 			std::cout << "Verifying Chain!\n";
 			verify_chain();
+			miner.send(boost::asio::buffer(chain[chain.size() - 1].hash));
 		}
 	}
+}
+
+void main_loop() {
+
 }
 
 int main() {
@@ -403,6 +436,7 @@ int main() {
 	udp::socket us_sock = udp::socket{io_ctxt, us_ep};
 	const int timeout = 2;
 	setsockopt(us_sock.native_handle(), SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout));
+	setsockopt(miner.native_handle(), SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout));
 	// us_sock.set_option(rcv_timeout_option{200});
 
 	std::cout << "Made Socket\n";
@@ -420,7 +454,7 @@ int main() {
 
 	std::cout << "Sent Gossip\n";
 
-	// demo_get_chain(us_sock);
+	// demo_get_chain(us_sock, miner);
 
 	// Wait a while to collect a list of peers
 	std::cout << "Listening for Peers\n";
@@ -449,6 +483,17 @@ int main() {
 	while (true) {
 		if (get_now() > next_self_check) {
 			self_check(us_sock);
+		}
+
+		if (new_block_made) {
+			new_block_made = false;
+
+			json block = chain[chain.size() - 1];
+			block["type"] = "ANNOUNCE";
+
+			for (auto& peer : peers) {
+				us_sock.send_to(boost::asio::buffer(block.dump()), peer.endpoint);
+			}
 		}
 
 		Receipt rec = recv(us_sock);
@@ -487,6 +532,7 @@ int main() {
 			if (!chain_verified && reqs.size() == 0) {
 				std::cout << "Verifying Chain!\n";
 				verify_chain();
+				miner.send(boost::asio::buffer(chain[chain.size() - 1].hash));
 			}
 		}
 
@@ -503,6 +549,10 @@ int main() {
 			add_block(incoming.template get<Block>());
 		} else if (incoming["type"] == "GET_BLOCK") {
 			get_block(us_sock, incoming["height"], rec.sender);
+		}
+
+		if (chain_verified) {
+			check_for_mine(us_sock, miner);
 		}
 	}
 
