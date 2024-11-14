@@ -383,27 +383,34 @@ void check_for_mine(udp::socket& us_sock, tcp::socket& miner) {
 	std::array<char, 1024> buf{};
 
 	std::cout << "Waiting to read from Miner\n";
-	size_t len = miner.read_some(boost::asio::buffer(buf));
-	std::cout << "Read from miner!\n";
-	next_mine_check = get_now() + mine_check_time;
-	if (len == 0) return;
+	boost::asio::steady_timer timer{io_ctxt.get_executor()};
+	miner.async_read_some(boost::asio::buffer(buf), [&](boost::system::error_code err, size_t len) {
+		if (err) return;
+		std::cout << "Read from miner!\n";
+		next_mine_check = get_now() + mine_check_time;
+		if (len == 0) return;
 
-	string rec{buf.data()};
-	rec = rec.substr(0, len);
-	std::cout << len << "\n";
-	std::cout << rec << "\n";
-	try {
-		json block = json::parse(rec);
-		block["height"] = chain.size();
-		Block new_block = block.template get<Block>();
-		bool added = add_block(new_block);
+		string rec{buf.data()};
+		rec = rec.substr(0, len);
+		std::cout << len << "\n";
+		std::cout << rec << "\n";
+		try {
+			json block = json::parse(rec);
+			block["height"] = chain.size();
+			Block new_block = block.template get<Block>();
+			bool added = add_block(new_block);
 
-		if (added) new_block_made = true;
+			if (added) new_block_made = true;
 
-		miner.send(boost::asio::buffer(chain[chain.size() - 1].hash));
-	} catch (std::exception& err) {
-		std::cerr << err.what() << "\n";
-	}
+			miner.send(boost::asio::buffer(chain[chain.size() - 1].hash));
+		} catch (std::exception& err) {
+			std::cerr << err.what() << "\n";
+		}
+	});
+
+	timer.expires_from_now(10s);
+	timer.wait();
+	miner.cancel();
 }
 
 void main_loop(udp::socket& us_sock, tcp::socket& miner) {
@@ -447,72 +454,98 @@ void main_loop(udp::socket& us_sock, tcp::socket& miner) {
 		}
 	}
 
-	Receipt rec = recv(us_sock);
-	if (rec.msg == "") {
-		std::cout << "Timed Out\n";
-		return;
-	}
+	// Receipt rec = recv(us_sock);
+	boost::asio::steady_timer timer{io_ctxt.get_executor()};
 
-	json incoming;
-	try {
-		incoming = json::parse(rec.msg);
-	} catch(const std::exception& e) {
-		std::cerr << e.what() << "\n";
-		return;
-	}
+	Receipt rec;
+	std::array<char, 1024> buf;
+	us_sock.async_receive_from(boost::asio::buffer(buf), rec.sender, [&](boost::system::error_code err, size_t len) {
+		std::cout << "Received!\n";
+		if (err) return;
+		if (len == 0) return;
 
-	Request filled = check_requests(reqs, incoming, rec.sender);
-	if (in_consensus) {
-		size_t num_filled = count_requests(reqs);
+		rec.received = get_now();
 
-		std::cout << num_filled << "/" << reqs.size() << " Requests Filled\n";
-		if (num_filled == reqs.size()) {
-			complete_consensus(us_sock);
+		add_peer(rec.sender);
+
+		string resp{buf.data()};
+		rec.msg = resp.substr(0, len);
+
+		std::cout << len << " " << resp << "\n";
+		// return rec;
+
+		if (rec.msg == "") {
+			std::cout << "Timed Out\n";
+			return;
 		}
-	} else {
-		if (filled.done) { // since check_requests returns an empty request if none were filled, done will be false
-			std::cout << reqs.size() << " Requests Left\n";
-			if (filled.response_type == "GET_BLOCK_REPLY") {
-				try {
-					chain[filled.response["height"]] = filled.response.template get<Block>();
-				} catch(const std::exception& e) {
-					std::cerr << e.what() << '\n';
+
+		json incoming;
+		try {
+			incoming = json::parse(rec.msg);
+		} catch(const std::exception& e) {
+			std::cerr << e.what() << "\n";
+			return;
+		}
+
+		Request filled = check_requests(reqs, incoming, rec.sender);
+		if (in_consensus) {
+			size_t num_filled = count_requests(reqs);
+
+			std::cout << num_filled << "/" << reqs.size() << " Requests Filled\n";
+			if (num_filled == reqs.size()) {
+				complete_consensus(us_sock);
+			}
+		} else {
+			if (filled.done) { // since check_requests returns an empty request if none were filled, done will be false
+				std::cout << reqs.size() << " Requests Left\n";
+				if (filled.response_type == "GET_BLOCK_REPLY") {
+					try {
+						chain[filled.response["height"]] = filled.response.template get<Block>();
+					} catch(const std::exception& e) {
+						std::cerr << e.what() << '\n';
+					}
+				}
+
+				// Clear out completed reqs
+				std::erase_if(reqs, [](Request r) { return r.done; });
+			}
+
+			if (!chain_verified && reqs.size() == 0) {
+				std::cout << "Verifying Chain!\n";
+				// chain.pop_back();
+				verify_chain();
+				if (miner_enable) {
+					// chain.pop_back();
+					miner.send(boost::asio::buffer(chain[chain.size() - 1].hash));
 				}
 			}
-
-			// Clear out completed reqs
-			std::erase_if(reqs, [](Request r) { return r.done; });
 		}
 
-		if (!chain_verified && reqs.size() == 0) {
-			std::cout << "Verifying Chain!\n";
-			chain.pop_back();
-			verify_chain();
-			if (miner_enable) {
-				chain.pop_back();
-				miner.send(boost::asio::buffer(chain[chain.size() - 1].hash));
-			}
+		if (incoming["type"] == "GOSSIP") {
+			process_gossip(us_sock, incoming.template get<Gossip>());
+		} else if (incoming["type"] == "GOSSIP_REPLY") {
+			add_peer(incoming["host"], incoming["port"]);
+		} else if (incoming["type"] == "STATS") {
+			std::cout << "OOOO Sending stats\n";
+			send_stats(us_sock, rec.sender);
+		} else if (incoming["type"] == "STATS_REPLY") {
+			// Update our own stats
+		} else if (incoming["type"] == "ANNOUNCE") {
+			add_block(incoming.template get<Block>());
+		} else if (incoming["type"] == "GET_BLOCK") {
+			get_block(us_sock, incoming["height"], rec.sender);
 		}
-	}
 
-	if (incoming["type"] == "GOSSIP") {
-		process_gossip(us_sock, incoming.template get<Gossip>());
-	} else if (incoming["type"] == "GOSSIP_REPLY") {
-		add_peer(incoming["host"], incoming["port"]);
-	} else if (incoming["type"] == "STATS") {
-		std::cout << "OOOO Sending stats\n";
-		send_stats(us_sock, rec.sender);
-	} else if (incoming["type"] == "STATS_REPLY") {
-		// Update our own stats
-	} else if (incoming["type"] == "ANNOUNCE") {
-		add_block(incoming.template get<Block>());
-	} else if (incoming["type"] == "GET_BLOCK") {
-		get_block(us_sock, incoming["height"], rec.sender);
-	}
+		if (miner_enable && chain_verified && get_now() > next_mine_check) {
+			check_for_mine(us_sock, miner);
+		}
 
-	if (miner_enable && chain_verified && get_now() > next_mine_check) {
-		check_for_mine(us_sock, miner);
-	}
+		timer.cancel();
+	});
+
+	timer.expires_from_now(5s);
+	timer.wait();
+	us_sock.cancel();
 }
 
 // Just requests the first 150 blocks from the known peer and verifies them
@@ -566,12 +599,12 @@ int main(int argc, char* argv[]) {
 		std::cout << m_resp << "\n";
 	}
 
-	timeval timeout;
-	timeout.tv_usec = 0;
-	timeout.tv_sec = 2;
-	setsockopt(us_sock.native_handle(), SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout));
+	// us_sock.set_option(boost::asio::detail::socket_option::integer<SOL_SOCKET, SO_RCVTIMEO>{ 200 });
+	// timeval timeout;
+	// timeout.tv_usec = 0;
+	// timeout.tv_sec = 2;
+	// setsockopt(us_sock.native_handle(), SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout));
 	// setsockopt(miner.native_handle(), SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout));
-	// us_sock.set_option(rcv_timeout_option{200});
 
 	std::cout << "Our Address: " << my_host << "\n";
 	std::cout << "Our Port: " << my_port << "\n";
