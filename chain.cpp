@@ -302,10 +302,17 @@ void complete_consensus(udp::socket& us_sock) {
 		}
 	}
 
-	for (auto& peer : peers) {
-		if (peer.local_hash == hash && peer.local_height == longest) {
-			for (size_t i = 0; i < longest; ++i) {
+	size_t redun = 5; // Number of peers to send the block request to
+
+	for (size_t i = 0; i < longest; ++i) {
+		size_t start = rand() % peers.size();
+		size_t sent = 0;
+		for (size_t j = 0; j < peers.size(); ++j) {
+			Peer peer = peers[(j + start) % peers.size()];
+			if (peer.local_hash == hash && peer.local_height == longest) {
 				reqs.push_back(make_request(us_sock, peer.endpoint, "{\"type\":\"GET_BLOCK\",\"height\":" + std::to_string(i) + "}", "GET_BLOCK_REPLY"));
+				++sent;
+				if (sent >= redun) break;
 			}
 		}
 	}
@@ -386,34 +393,27 @@ void check_for_mine(udp::socket& us_sock, tcp::socket& miner) {
 	std::array<char, 1024> buf{};
 
 	std::cout << "Waiting to read from Miner\n";
-	boost::asio::steady_timer timer{io_ctxt.get_executor()};
-	miner.async_read_some(boost::asio::buffer(buf), [&](boost::system::error_code err, size_t len) {
-		if (err) return;
-		std::cout << "Read from miner!\n";
-		next_mine_check = get_now() + mine_check_time;
-		if (len == 0) return;
+	size_t len = miner.read_some(boost::asio::buffer(buf));
+	std::cout << "Read from miner!\n";
+	next_mine_check = get_now() + mine_check_time;
+	if (len == 0) return;
 
-		string rec{buf.data()};
-		rec = rec.substr(0, len);
-		std::cout << len << "\n";
-		std::cout << rec << "\n";
-		try {
-			json block = json::parse(rec);
-			block["height"] = chain.size();
-			Block new_block = block.template get<Block>();
-			bool added = add_block(new_block);
+	string rec{buf.data()};
+	rec = rec.substr(0, len);
+	std::cout << len << "\n";
+	std::cout << rec << "\n";
+	try {
+		json block = json::parse(rec);
+		block["height"] = chain.size();
+		Block new_block = block.template get<Block>();
+		bool added = add_block(new_block);
 
-			if (added) new_block_made = true;
+		if (added) new_block_made = true;
+	} catch (std::exception& err) {
+		std::cerr << err.what() << "\n";
+	}
 
-			miner.send(boost::asio::buffer(chain[chain.size() - 1].hash));
-		} catch (std::exception& err) {
-			std::cerr << err.what() << "\n";
-		}
-	});
-
-	timer.expires_from_now(10s);
-	timer.wait();
-	miner.cancel();
+	miner.send(boost::asio::buffer(chain[chain.size() - 1].hash));
 }
 
 template <size_t size>
@@ -423,8 +423,16 @@ class UDP_Receiver {
 		UDP_Receiver(udp::socket& sock) : sock{sock} {}
 
 		Receipt recv_from(const seconds& timeout) {
-			start_recv();
-			spin(timeout);
+			Receipt rec;
+			std::array<char, 1024> buf;
+			size_t len = sock.receive_from(boost::asio::buffer(buf), rec.sender);
+			if (len == 0) return {};
+
+			rec.received = get_now();
+
+			string resp{buf.data()};
+			rec.msg = resp.substr(0, len);
+
 			return rec;
 		}
 	private:
@@ -559,6 +567,7 @@ void main_loop(udp::socket& us_sock, tcp::socket& miner) {
 			if (miner_enable) {
 				// chain.pop_back();
 				miner.send(boost::asio::buffer(chain[chain.size() - 1].hash));
+				next_mine_check = get_now() + mine_check_time;
 			}
 		}
 	}
@@ -644,7 +653,7 @@ int main(int argc, char* argv[]) {
 
 	std::cout << "Sent Gossip\n";
 
-	demo_get_chain(us_sock, miner);
+	// demo_get_chain(us_sock, miner);
 
 	// Wait a while to collect a list of peers
 	std::cout << "Listening for Peers\n";

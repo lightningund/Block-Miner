@@ -70,8 +70,12 @@ void test_hash() {
 	host_hash_block("", test_block);
 }
 
+size_t get_small_stamp() {
+	using namespace std::chrono;
+	return duration_cast<seconds>(get_now().time_since_epoch()).count();
+}
 int main(int argc, char* argv[]) {
-	test_hash();
+	// test_hash();
 
 	if (argc < 2) {
 		std::cerr << "Please Give me a host idk what to do\n";
@@ -118,10 +122,11 @@ int main(int argc, char* argv[]) {
 			"ground. The bee, of",
 			"course, flies"
 		},
-		.timestamp = 1731520534
+		.timestamp = 1000000000
 	};
 
 	while (true) {
+		curr_block.timestamp = get_small_stamp();
 		std::cout << "Finding new nonce\n";
 		find_nonce(last_hash, curr_block);
 		json block = curr_block;

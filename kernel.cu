@@ -4,8 +4,8 @@
 #include "kernel.cuh"
 #include "sha256.cuh"
 
-constexpr auto difficulty = 9;
-constexpr auto nonce_max = 16;
+constexpr auto difficulty = 8;
+constexpr auto nonce_max = 32;
 
 // Wrapper for managed memory objects
 template <typename T>
@@ -139,7 +139,7 @@ void setup(const BYTE input[], size_t input_len, BYTE nonce[], hash_t* hash, siz
 	*loops = 0;
 	while (*found == false) {
 		// test_nonce<<<256, 256>>>(input, input_len, *loops, nonce, hash, found);
-		test_nonce<<<256, 256>>>(ctx, *loops, nonce, hash, found);
+		test_nonce<<<256, 512>>>(ctx, *loops, nonce, hash, found);
 		cudaDeviceSynchronize();
 		++(*loops);
 	}
