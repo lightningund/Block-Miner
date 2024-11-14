@@ -177,9 +177,12 @@ void find_nonce(const string& last_hash, Block& block) {
 	cudaMemcpy(&hash, dev_hash.raw, sizeof(hash), cudaMemcpyDeviceToHost);
 	std::cout << loops << "\n";
 	std::cout << nonce << "\n";
+	std::cout << std::dec << nonce.size() << "\n";
 	std::cout << hash << "\n";
 
 	block.nonce = std::string{reinterpret_cast<char*>(nonce.data())};
+	block.nonce = block.nonce.substr(0, nonce_max);
 	std::cout << block.nonce << "\n";
+	std::cout << std::dec << block.nonce.size() << "\n";
 	block.hash = hash_to_string(hash);
 }

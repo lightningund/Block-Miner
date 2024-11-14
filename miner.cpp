@@ -71,7 +71,7 @@ void test_hash() {
 }
 
 int main(int argc, char* argv[]) {
-	test_hash();
+	// test_hash();
 
 	if (argc < 2) {
 		std::cerr << "Please Give me a host idk what to do\n";

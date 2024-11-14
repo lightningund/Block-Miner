@@ -133,14 +133,29 @@ void add_block(Block b) {
 
 void get_block(udp::socket& us_sock, size_t idx, const udp::endpoint& target) {
 	try {
-		if (chain.size() > 0 && chain.at(idx).height) {
-			json reply = chain[idx];
+		if (chain.size() > 0) {
+			if (chain.at(idx).hash != "") {
+				json reply = chain[idx];
+				reply["type"] = "GET_BLOCK_REPLY";
+				std::cout << "Block: " << reply << "\n";
+				us_sock.send_to(boost::asio::buffer(reply.dump()), target);
+			} else {
+				json reply = Block{};
+				reply["type"] = "GET_BLOCK_REPLY";
+				us_sock.send_to(boost::asio::buffer(reply.dump()), target);
+				std::cout << "Sorry, seems we don't have that one\n";
+			}
+		} else {
+			json reply = Block{};
 			reply["type"] = "GET_BLOCK_REPLY";
-			// std::cout << "Block: " << reply << "\n";
 			us_sock.send_to(boost::asio::buffer(reply.dump()), target);
+			std::cout << "Empty Chain\n";
 		}
 	}
 	catch(const std::exception& e) {
+		json reply = Block{};
+		reply["type"] = "GET_BLOCK_REPLY";
+		us_sock.send_to(boost::asio::buffer(reply.dump()), target);
 		std::cerr << e.what() << '\n';
 	}
 }
@@ -212,7 +227,6 @@ bool verify_chain() {
 		last_hash = block.hash;
 		if (hash != block.hash) {
 			std::cout << "\n\n\nNOOOOOOO\n\n\n";
-			return false;
 		}
 	}
 
@@ -382,9 +396,28 @@ void main_loop(udp::socket& us_sock, tcp::socket& miner) {
 		json recon;
 		recon["type"] = "CONSENSUS";
 
+		auto messages = {
+			"According to all",
+			"known laws of",
+			"aviation, there is",
+			"no way a bee should",
+			"be able to fly. Its",
+			"wings are too small",
+			"to get its fat",
+			"little body off the",
+			"ground. The bee, of",
+			"course, flies"
+		};
+
 		for (auto& peer : peers) {
+			for (auto& msg : messages) {
+				json new_msg;
+				new_msg["type"] = "NEW_WORD";
+				new_msg["word"] = msg;
+				us_sock.send_to(boost::asio::buffer(block.dump()), peer.endpoint);
+			}
 			us_sock.send_to(boost::asio::buffer(block.dump()), peer.endpoint);
-			us_sock.send_to(boost::asio::buffer(recon.dump()), peer.endpoint);
+			// us_sock.send_to(boost::asio::buffer(recon.dump()), peer.endpoint);
 		}
 	}
 
@@ -427,6 +460,8 @@ void main_loop(udp::socket& us_sock, tcp::socket& miner) {
 
 		if (!chain_verified && reqs.size() == 0) {
 			std::cout << "Verifying Chain!\n";
+			chain.pop_back();
+			chain.pop_back();
 			verify_chain();
 			miner.send(boost::asio::buffer(chain[chain.size() - 1].hash));
 		}
@@ -457,9 +492,9 @@ void demo_get_chain(udp::socket& us_sock, tcp::socket& miner) {
 	udp::resolver resolver{io_ctxt};
 	udp::endpoint silicon = *resolver.resolve({udp::v4(), "silicon.cs.umanitoba.ca", "8999"});
 
-	chain = std::vector<Block>(160);
+	chain = std::vector<Block>(100);
 
-	for (int i = 0; i < 160; ++i) {
+	for (int i = 0; i < 100; ++i) {
 		reqs.push_back(make_request(us_sock, silicon, "{\"type\":\"GET_BLOCK\",\"height\":" + std::to_string(i) + "}", "GET_BLOCK_REPLY"));
 	}
 
@@ -490,7 +525,7 @@ int main() {
 	udp::socket us_sock = udp::socket{io_ctxt, us_ep};
 	const int timeout = 1;
 	setsockopt(us_sock.native_handle(), SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout));
-	setsockopt(miner.native_handle(), SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout));
+	// setsockopt(miner.native_handle(), SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout));
 	// us_sock.set_option(rcv_timeout_option{200});
 
 	std::cout << "Made Socket\n";
@@ -508,7 +543,7 @@ int main() {
 
 	std::cout << "Sent Gossip\n";
 
-	demo_get_chain(us_sock, miner);
+	// demo_get_chain(us_sock, miner);
 
 	// Wait a while to collect a list of peers
 	std::cout << "Listening for Peers\n";
