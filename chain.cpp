@@ -23,7 +23,7 @@ using json = nlohmann::json;
 using boost::asio::ip::udp;
 using boost::asio::ip::tcp;
 
-constexpr auto known_host = "ember.cs.umanitoba.ca";
+constexpr auto known_host = "silicon.cs.umanitoba.ca";
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Block, minedBy, messages, nonce, height, hash, timestamp)
 
@@ -231,6 +231,7 @@ bool verify_chain() {
 	string last_hash = "";
 
 	for (int i = 0; i < chain.size(); ++i) {
+		std::cout << i << "\n";
 		try {
 			if (chain.at(i).hash == "") {
 				std::cout << "\n\n\nNOOOOOOO block in chain where there should be\n\n\n";
@@ -313,8 +314,9 @@ void complete_consensus(udp::socket& us_sock) {
 			Peer peer = peers[(j + start) % peers.size()];
 			if (peer.local_hash == hash && peer.local_height == longest) {
 				reqs.push_back(make_request(us_sock, peer.endpoint, "{\"type\":\"GET_BLOCK\",\"height\":" + std::to_string(i) + "}", "GET_BLOCK_REPLY"));
+				reqs.push_back(make_request(us_sock, peer.endpoint, "{\"type\":\"GET_BLOCK\",\"height\":" + std::to_string(i) + "}", "ANNOUNCE"));
 				++sent;
-				if (sent >= redun) break;
+				// if (sent >= redun) break;
 			}
 		}
 	}
@@ -335,12 +337,13 @@ void make_gossip(udp::socket& us_sock) {
 }
 
 void self_check(udp::socket& us_sock) {
-	std::cout << "Performing self check\n";
-	std::cout << "Num Requests: " << reqs.size() << "\n";
-
 	timepoint now = get_now();
 
-	next_self_check = now + self_check_time;
+	// if (now < next_self_check) return;
+	// next_self_check = now + self_check_time;
+
+	std::cout << "Performing self check\n";
+	std::cout << "Num Requests: " << reqs.size() << "\n";
 
 	// Make sure to generate gossip if we haven't sent anything in a while
 	if (last_gossip + re_gossip_time < now) {
@@ -480,9 +483,7 @@ class UDP_Receiver {
 void main_loop(udp::socket& us_sock, tcp::socket& miner) {
 	std::cout << "New Loop!\n";
 
-	if (get_now() > next_self_check) {
-		self_check(us_sock);
-	}
+	self_check(us_sock);
 
 	if (new_block_made) {
 		new_block_made = false;
@@ -550,7 +551,7 @@ void main_loop(udp::socket& us_sock, tcp::socket& miner) {
 	} else {
 		if (filled.done) { // since check_requests returns an empty request if none were filled, done will be false
 			std::cout << reqs.size() << " Requests Left\n";
-			if (filled.response_type == "GET_BLOCK_REPLY") {
+			if (filled.response_type == "GET_BLOCK_REPLY" || filled.response_type == "ANNOUNCE") {
 				try {
 					chain[filled.response["height"]] = filled.response.template get<Block>();
 				} catch(const std::exception& e) {
@@ -595,9 +596,9 @@ void demo_get_chain(udp::socket& us_sock, tcp::socket& miner) {
 	udp::resolver resolver{io_ctxt};
 	udp::endpoint silicon = *resolver.resolve({udp::v4(), "silicon.cs.umanitoba.ca", "8999"});
 
-	chain = std::vector<Block>(100);
+	chain = std::vector<Block>(250);
 
-	for (int i = 0; i < 100; ++i) {
+	for (int i = 0; i < 250; ++i) {
 		reqs.push_back(make_request(us_sock, silicon, "{\"type\":\"GET_BLOCK\",\"height\":" + std::to_string(i) + "}", "GET_BLOCK_REPLY"));
 	}
 
@@ -655,7 +656,7 @@ int main(int argc, char* argv[]) {
 
 	std::cout << "Sent Gossip\n";
 
-	// demo_get_chain(us_sock, miner);
+	demo_get_chain(us_sock, miner);
 
 	// Wait a while to collect a list of peers
 	std::cout << "Listening for Peers\n";
