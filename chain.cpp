@@ -457,7 +457,13 @@ int main() {
 			continue;
 		}
 
-		json incoming = json::parse(rec.msg);
+		json incoming;
+		try {
+			incoming = json::parse(rec.msg);
+		} catch(const std::exception& e) {
+			std::cerr << e.what() << "\n";
+			continue;
+		}
 
 		Request filled = check_requests(reqs, incoming, rec.sender);
 		if (in_consensus) {
