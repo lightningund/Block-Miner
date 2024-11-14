@@ -40,6 +40,50 @@
 #include <fstream>
 #include "csha256.hpp"
 
+#define SHA2_SHFR(x, n)    (x >> n)
+#define SHA2_ROTR(x, n)   ((x >> n) | (x << ((sizeof(x) << 3) - n)))
+#define SHA2_ROTL(x, n)   ((x << n) | (x >> ((sizeof(x) << 3) - n)))
+#define SHA2_CH(x, y, z)  ((x & y) ^ (~x & z))
+#define SHA2_MAJ(x, y, z) ((x & y) ^ (x & z) ^ (y & z))
+#define SHA256_F1(x) (SHA2_ROTR(x,  2) ^ SHA2_ROTR(x, 13) ^ SHA2_ROTR(x, 22))
+#define SHA256_F2(x) (SHA2_ROTR(x,  6) ^ SHA2_ROTR(x, 11) ^ SHA2_ROTR(x, 25))
+#define SHA256_F3(x) (SHA2_ROTR(x,  7) ^ SHA2_ROTR(x, 18) ^ SHA2_SHFR(x,  3))
+#define SHA256_F4(x) (SHA2_ROTR(x, 17) ^ SHA2_ROTR(x, 19) ^ SHA2_SHFR(x, 10))
+#define SHA2_UNPACK32(x, str)                 \
+{                                             \
+	*((str) + 3) = (uint8_t) ((x)      );       \
+	*((str) + 2) = (uint8_t) ((x) >>  8);       \
+	*((str) + 1) = (uint8_t) ((x) >> 16);       \
+	*((str) + 0) = (uint8_t) ((x) >> 24);       \
+}
+#define SHA2_PACK32(str, x)                   \
+{                                             \
+	*(x) =   ((uint32_t) *((str) + 3)      )    \
+		   | ((uint32_t) *((str) + 2) <<  8)    \
+		   | ((uint32_t) *((str) + 1) << 16)    \
+		   | ((uint32_t) *((str) + 0) << 24);   \
+}
+
+class SHA256 {
+private:
+	const static uint32_t sha256_k[];
+	static const unsigned int SHA224_256_BLOCK_SIZE = (512/8);
+
+	unsigned int m_tot_len;
+	unsigned int m_len;
+	unsigned char m_block[2 * SHA224_256_BLOCK_SIZE];
+	uint32_t m_h[8];
+
+	void transform(const unsigned char* message, unsigned int block_nb);
+
+public:
+	static constexpr unsigned int DIGEST_SIZE = (256 / 8);
+
+	SHA256();
+	void update(const unsigned char* message, unsigned int len);
+	void final(unsigned char* digest);
+};
+
 const unsigned int SHA256::sha256_k[64] = { //UL = uint32
 	0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
 	0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
@@ -60,9 +104,9 @@ const unsigned int SHA256::sha256_k[64] = { //UL = uint32
 };
 
 void SHA256::transform(const unsigned char* message, unsigned int block_nb) {
-	uint32 w[64];
-	uint32 wv[8];
-	uint32 t1, t2;
+	uint32_t w[64];
+	uint32_t wv[8];
+	uint32_t t1, t2;
 	const unsigned char* sub_block;
 	for (int i = 0; i < (int) block_nb; i++) {
 		sub_block = message + (i << 6);
@@ -93,7 +137,7 @@ void SHA256::transform(const unsigned char* message, unsigned int block_nb) {
 	}
 }
 
-void SHA256::init() {
+SHA256::SHA256() {
 	m_h[0] = 0x6a09e667;
 	m_h[1] = 0xbb67ae85;
 	m_h[2] = 0x3c6ef372;
@@ -146,8 +190,7 @@ std::string sha256(std::string input) {
 	unsigned char digest[SHA256::DIGEST_SIZE];
 	memset(digest, 0, SHA256::DIGEST_SIZE);
 
-	SHA256 ctx = SHA256();
-	ctx.init();
+	SHA256 ctx{};
 	ctx.update((unsigned char*)input.c_str(), input.length());
 	ctx.final(digest);
 
