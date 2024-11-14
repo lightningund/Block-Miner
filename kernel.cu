@@ -4,7 +4,7 @@
 #include "kernel.cuh"
 #include "sha256.cuh"
 
-constexpr auto difficulty = 9;
+constexpr auto difficulty = 8;
 constexpr auto nonce_max = 16;
 
 // Wrapper for managed memory objects
@@ -97,8 +97,6 @@ string hash_to_string(const hash_t& hash) {
 
 __global__
 void test_nonce(
-	// const BYTE input[],
-	// size_t input_len,
 	HashContext ctx,
 	size_t offset,
 	BYTE golden[],
@@ -111,8 +109,6 @@ void test_nonce(
 		nonce[i] = 'A' + (thread & 0xF);
 		thread >>= 4;
 	}
-	// HashContext ctx{};
-	// ctx.update(input, input_len);
 	ctx.update(nonce, nonce_max);
 	hash_t temp;
 	ctx.digest(temp.data());
@@ -138,7 +134,6 @@ void setup(const BYTE input[], size_t input_len, BYTE nonce[], hash_t* hash, siz
 	*found = false;
 	*loops = 0;
 	while (*found == false) {
-		// test_nonce<<<256, 256>>>(input, input_len, *loops, nonce, hash, found);
 		test_nonce<<<256, 512>>>(ctx, *loops, nonce, hash, found);
 		cudaDeviceSynchronize();
 		++(*loops);
@@ -152,7 +147,6 @@ void find_nonce(const string& last_hash, Block& block) {
 	cudaEventCreate(&stop);
 	cudaEventRecord(start);
 	string input = last_hash;
-	// input += "Ben's GPU";
 	input += block.minedBy;
 
 	for (auto&& msg : block.messages) {

@@ -19,10 +19,6 @@
 
 struct HashContext {
 	static constexpr size_t DIGEST_SIZE = 32;
-	BYTE data[64];
-	WORD datalen;
-	unsigned long long bitlen;
-	WORD state[8];
 
 	__device__
 	HashContext();
@@ -34,12 +30,12 @@ struct HashContext {
 	void digest(BYTE hash[]);
 
 private:
+	BYTE data[64];
+	WORD datalen;
+	unsigned long long bitlen;
+	WORD state[8];
+
 	__device__
 	__forceinline__
 	void transform();
 };
-
-__global__
-void kernel_sha256_hash(const BYTE* indata, WORD inlen, BYTE* outdata, WORD n_batch);
-
-void mcm_cuda_sha256_hash_batch(const BYTE* in, WORD inlen, BYTE* out, WORD n_batch);

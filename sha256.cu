@@ -151,47 +151,6 @@ void HashContext::digest(BYTE hash[]) {
 	for (int j = 0; j < 8; ++j) {
 		for (i = 0; i < 4; ++i) {
 			hash[i + j * 4] = (state[j] >> (24 - i * 8)) & 0xFF;
-			// hash[i]      = (state[0] >> (24 - i * 8)) & 0x000000ff;
-			// hash[i + 4]  = (state[1] >> (24 - i * 8)) & 0x000000ff;
-			// hash[i + 8]  = (state[2] >> (24 - i * 8)) & 0x000000ff;
-			// hash[i + 12] = (state[3] >> (24 - i * 8)) & 0x000000ff;
-			// hash[i + 16] = (state[4] >> (24 - i * 8)) & 0x000000ff;
-			// hash[i + 20] = (state[5] >> (24 - i * 8)) & 0x000000ff;
-			// hash[i + 24] = (state[6] >> (24 - i * 8)) & 0x000000ff;
-			// hash[i + 28] = (state[7] >> (24 - i * 8)) & 0x000000ff;
 		}
 	}
-}
-
-__global__
-void kernel_sha256_hash(const BYTE* indata, WORD inlen, BYTE* outdata, WORD n_batch) {
-	WORD thread = blockIdx.x * blockDim.x + threadIdx.x;
-	if (thread >= n_batch) return;
-
-	const BYTE* in = indata + thread * inlen;
-	BYTE* out = outdata + thread * SHA256_BLOCK_SIZE;
-	HashContext ctx{};
-	ctx.update(in, inlen);
-	ctx.digest(out);
-}
-
-void mcm_cuda_sha256_hash_batch(const BYTE* in, WORD inlen, BYTE* out, WORD n_batch) {
-	BYTE *cuda_indata;
-	BYTE *cuda_outdata;
-	cudaMalloc(&cuda_indata, inlen * n_batch);
-	cudaMalloc(&cuda_outdata, SHA256_BLOCK_SIZE * n_batch);
-	cudaMemcpy(cuda_indata, in, inlen * n_batch, cudaMemcpyHostToDevice);
-
-	WORD thread = 256;
-	WORD block = (n_batch + thread - 1) / thread;
-
-	kernel_sha256_hash<<<block, thread>>>(cuda_indata, inlen, cuda_outdata, n_batch);
-	cudaMemcpy(out, cuda_outdata, SHA256_BLOCK_SIZE * n_batch, cudaMemcpyDeviceToHost);
-	cudaDeviceSynchronize();
-	cudaError_t error = cudaGetLastError();
-	if (error != cudaSuccess) {
-		printf("Error cuda sha256 hash: %s \n", cudaGetErrorString(error));
-	}
-	cudaFree(cuda_indata);
-	cudaFree(cuda_outdata);
 }
