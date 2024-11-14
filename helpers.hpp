@@ -4,7 +4,7 @@
 #define LOG_ERR(msg) std::cerr << (msg) << ": " << errno << "\n"
 
 constexpr auto peers_to_repeat_to = 3;
-constexpr auto msg_dead_time = 3s;
+constexpr auto msg_dead_time = 10s;
 constexpr auto peer_dead_time = 1min;
 constexpr auto re_gossip_time = 30s;
 constexpr auto self_check_time = 1s;
