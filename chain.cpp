@@ -131,7 +131,9 @@ void send_stats(udp::socket& us_sock, const udp::endpoint& target) {
 }
 
 void add_block(Block b) {
-
+	if (hash_block(chain[chain.size() - 1].hash, b) != b.hash) return;
+	chain.push_back(b);
+	// Stop miner?
 }
 
 void get_block(udp::socket& us_sock, size_t idx, const udp::endpoint& target) {
@@ -295,7 +297,9 @@ void complete_consensus(udp::socket& us_sock) {
 void make_gossip(udp::socket& us_sock) {
 	std::cout << "Generating Gossip\n";
 	udp::resolver resolver{io_ctxt};
-	udp::endpoint silicon = *resolver.resolve({udp::v4(), "silicon.cs.umanitoba.ca", "8999"});
+	udp::endpoint silicon = *resolver.resolve({udp::v4(), "ember.cs.umanitoba.ca", "8999"});
+
+	std::cout << silicon.address().to_string() << "\n";
 
 	json goss = Gossip{};
 	goss["type"] = "GOSSIP";
@@ -464,9 +468,11 @@ void main_loop(udp::socket& us_sock, tcp::socket& miner) {
 		if (!chain_verified && reqs.size() == 0) {
 			std::cout << "Verifying Chain!\n";
 			chain.pop_back();
-			chain.pop_back();
 			verify_chain();
-			miner.send(boost::asio::buffer(chain[chain.size() - 1].hash));
+			if (miner_enable) {
+				chain.pop_back();
+				miner.send(boost::asio::buffer(chain[chain.size() - 1].hash));
+			}
 		}
 	}
 
@@ -513,6 +519,17 @@ int main(int argc, char* argv[]) {
 
 	std::srand(std::time(nullptr));
 
+	udp::endpoint us_ep = udp::endpoint{udp::v4(), my_port};
+
+	udp::socket us_sock = udp::socket{io_ctxt, us_ep};
+	std::cout << "Made Socket\n";
+
+	my_host = boost::asio::ip::host_name();
+	std::cout << "Our Address: " << my_host << "\n";
+	udp::resolver resolver{io_ctxt};
+	udp::endpoint public_ep = *resolver.resolve({udp::v4(), my_host, std::to_string(my_port)});
+	my_host = public_ep.address().to_string();
+
 	tcp::socket miner{io_ctxt};
 	if (miner_enable) {
 		tcp::acceptor acceptor{io_ctxt, tcp::endpoint{tcp::v4(), 50001}};
@@ -529,21 +546,10 @@ int main(int argc, char* argv[]) {
 		std::cout << m_resp << "\n";
 	}
 
-	udp::endpoint us_ep = udp::endpoint{udp::v4(), my_port};
-
-	udp::socket us_sock = udp::socket{io_ctxt, us_ep};
 	const int timeout = 1;
 	setsockopt(us_sock.native_handle(), SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout));
 	// setsockopt(miner.native_handle(), SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout));
 	// us_sock.set_option(rcv_timeout_option{200});
-
-	std::cout << "Made Socket\n";
-
-	my_host = boost::asio::ip::host_name();
-	std::cout << "Our Address: " << my_host << "\n";
-	udp::resolver resolver{io_ctxt};
-	udp::endpoint public_ep = *resolver.resolve({udp::v4(), my_host, std::to_string(my_port)});
-	my_host = public_ep.address().to_string();
 
 	std::cout << "Our Address: " << my_host << "\n";
 	std::cout << "Our Port: " << my_port << "\n";
