@@ -122,16 +122,20 @@ int main(int argc, char* argv[]) {
 	};
 
 	while (true) {
+		std::cout << "Finding new nonce\n";
 		find_nonce(last_hash, curr_block);
-		last_hash = curr_block.hash;
-		std::cout << last_hash << "\n";
-		std::cout << "Sending block to chain\n";
 		json block = curr_block;
 		std::cout << block << "\n";
+		std::cout << "Sending block to chain\n";
 		chain.send(boost::asio::buffer(block.dump()));
 		curr_block.timestamp++;
 		// Block until we read something
+		std::cout << "Waiting until we get something back\n";
 		len = chain.read_some(boost::asio::buffer(buf), err);
+		std::cout << len << "\n";
+		last_hash = string{buf.data()};
+		last_hash = last_hash.substr(0, len);
+		std::cout << last_hash << "\n";
 	}
 
 	return 0;

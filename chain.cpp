@@ -130,10 +130,11 @@ void send_stats(udp::socket& us_sock, const udp::endpoint& target) {
 	}
 }
 
-void add_block(Block b) {
-	if (hash_block(chain[chain.size() - 1].hash, b) != b.hash) return;
+bool add_block(Block b) {
+	if (b.height != chain.size()) return false;
+	if (chain_verified && hash_block(chain[chain.size() - 1].hash, b) != b.hash) return false;
 	chain.push_back(b);
-	// Stop miner?
+	return true;
 }
 
 void get_block(udp::socket& us_sock, size_t idx, const udp::endpoint& target) {
@@ -227,11 +228,28 @@ bool verify_chain() {
 
 	string last_hash = "";
 
-	for (auto&& block : chain) {
-		string hash = hash_block(last_hash, block);
-		last_hash = block.hash;
-		if (hash != block.hash) {
+	for (int i = 0; i < chain.size(); ++i) {
+		try {
+			if (chain.at(i).hash == "") {
+				std::cout << "\n\n\nNOOOOOOO\n\n\n";
+				chain.erase(chain.begin() + i, chain.end());
+				return true;
+			}
+
+			Block block = chain[i];
+
+			string hash = hash_block(last_hash, block);
+			last_hash = block.hash;
+			if (hash != block.hash) {
+				std::cout << "\n\n\nNOOOOOOO\n\n\n";
+				chain.erase(chain.begin() + i, chain.end());
+				return true;
+			}
+		} catch(const std::exception& e) {
+			std::cerr << e.what() << '\n';
 			std::cout << "\n\n\nNOOOOOOO\n\n\n";
+			chain.erase(chain.begin() + i, chain.end());
+			return true;
 		}
 	}
 
@@ -297,7 +315,7 @@ void complete_consensus(udp::socket& us_sock) {
 void make_gossip(udp::socket& us_sock) {
 	std::cout << "Generating Gossip\n";
 	udp::resolver resolver{io_ctxt};
-	udp::endpoint silicon = *resolver.resolve({udp::v4(), "ember.cs.umanitoba.ca", "8999"});
+	udp::endpoint silicon = *resolver.resolve({udp::v4(), "silicon.cs.umanitoba.ca", "8999"});
 
 	std::cout << silicon.address().to_string() << "\n";
 
@@ -378,10 +396,11 @@ void check_for_mine(udp::socket& us_sock, tcp::socket& miner) {
 		json block = json::parse(rec);
 		block["height"] = chain.size();
 		Block new_block = block.template get<Block>();
-		chain.push_back(new_block);
+		bool added = add_block(new_block);
 
-		new_block_made = true;
-		miner.send(boost::asio::buffer("All G"));
+		if (added) new_block_made = true;
+
+		miner.send(boost::asio::buffer(chain[chain.size() - 1].hash));
 	} catch (std::exception& err) {
 		std::cerr << err.what() << "\n";
 	}
@@ -529,6 +548,7 @@ int main(int argc, char* argv[]) {
 	udp::resolver resolver{io_ctxt};
 	udp::endpoint public_ep = *resolver.resolve({udp::v4(), my_host, std::to_string(my_port)});
 	my_host = public_ep.address().to_string();
+	std::cout << "Our Address: " << my_host << "\n";
 
 	tcp::socket miner{io_ctxt};
 	if (miner_enable) {
@@ -546,9 +566,11 @@ int main(int argc, char* argv[]) {
 		std::cout << m_resp << "\n";
 	}
 
-	const int timeout = 1;
-	setsockopt(us_sock.native_handle(), SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout));
-	// setsockopt(miner.native_handle(), SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout));
+	timeval timeout;
+	timeout.tv_usec = 0;
+	timeout.tv_sec = 2;
+	setsockopt(us_sock.native_handle(), SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout));
+	// setsockopt(miner.native_handle(), SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout));
 	// us_sock.set_option(rcv_timeout_option{200});
 
 	std::cout << "Our Address: " << my_host << "\n";

@@ -1,6 +1,6 @@
 CPPC := g++
 CPPFLAGS := -g -std=c++20 -Wall
-CUDAFLAGS := --expt-relaxed-constexpr
+CUDAFLAGS := --expt-relaxed-constexpr -O2
 
 CPPSRCS := $(wildcard *.cpp)
 CPPOBJS := $(CPPSRCS:.cpp=.o)
