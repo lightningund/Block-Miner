@@ -4,7 +4,7 @@
 #include "kernel.cuh"
 #include "sha256.cuh"
 
-constexpr auto difficulty = 8;
+constexpr auto difficulty = 9;
 constexpr auto nonce_max = 16;
 
 // Wrapper for managed memory objects
@@ -121,7 +121,7 @@ void test_nonce(
 	}
 
 	if (difficulty % 2 == 1) {
-		size_t idx = HashContext::DIGEST_SIZE - (difficulty / 2);
+		size_t idx = HashContext::DIGEST_SIZE - (difficulty / 2) - 1;
 		if ((temp[idx] & 0xF) != 0) return;
 	}
 

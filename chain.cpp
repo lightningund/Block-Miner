@@ -8,6 +8,7 @@
 #include <unordered_set>
 #include <map>
 #include <chrono>
+#include <utility>
 
 #include "csha256.hpp"
 
@@ -47,6 +48,8 @@ std::vector<Block> chain{};
 bool in_consensus = false;
 bool chain_verified = false;
 bool new_block_made = false;
+
+bool miner_enable = true;
 
 string hash_block(string last_hash, Block block) {
 	string input = last_hash;
@@ -482,7 +485,7 @@ void main_loop(udp::socket& us_sock, tcp::socket& miner) {
 		get_block(us_sock, incoming["height"], rec.sender);
 	}
 
-	if (chain_verified && get_now() > next_mine_check) {
+	if (miner_enable && chain_verified && get_now() > next_mine_check) {
 		check_for_mine(us_sock, miner);
 	}
 }
@@ -503,22 +506,28 @@ void demo_get_chain(udp::socket& us_sock, tcp::socket& miner) {
 	}
 }
 
-int main() {
+int main(int argc, char* argv[]) {
+	if (argc > 1) {
+		miner_enable = (bool)std::atoi(argv[1]);
+	}
+
 	std::srand(std::time(nullptr));
 
-	tcp::acceptor acceptor{io_ctxt, tcp::endpoint{tcp::v4(), 50001}};
 	tcp::socket miner{io_ctxt};
-	std::cout << "Waiting to connect to miner\n";
-	acceptor.accept(miner);
+	if (miner_enable) {
+		tcp::acceptor acceptor{io_ctxt, tcp::endpoint{tcp::v4(), 50001}};
+		std::cout << "Waiting to connect to miner\n";
+		acceptor.accept(miner);
 
-	string to_miner = "Ayo bitch";
-	miner.send(boost::asio::buffer(to_miner));
-	std::cout << "Sent to miner\n";
-	std::array<char, 1024> m_buf{};
-	size_t m_len = miner.receive(boost::asio::buffer(m_buf));
-	string m_resp{m_buf.data()};
-	m_resp = m_resp.substr(0, m_len);
-	std::cout << m_resp << "\n";
+		string to_miner = "Ayo bitch";
+		miner.send(boost::asio::buffer(to_miner));
+		std::cout << "Sent to miner\n";
+		std::array<char, 1024> m_buf{};
+		size_t m_len = miner.receive(boost::asio::buffer(m_buf));
+		string m_resp{m_buf.data()};
+		m_resp = m_resp.substr(0, m_len);
+		std::cout << m_resp << "\n";
+	}
 
 	udp::endpoint us_ep = udp::endpoint{udp::v4(), my_port};
 
