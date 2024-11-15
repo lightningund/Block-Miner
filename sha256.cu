@@ -116,6 +116,20 @@ void HashContext::update(const BYTE incoming[], size_t len) {
 }
 
 __device__
+void HashContext::update(size_t offset) {
+	for (size_t i = 0; i < sizeof(size_t) * 2; ++i) {
+		data[datalen] = 'A' + (offset & 0xF);
+		datalen++;
+		offset >>= 4;
+		if (datalen == 64) {
+			transform();
+			bitlen += 512;
+			datalen = 0;
+		}
+	}
+}
+
+__device__
 void HashContext::digest(BYTE hash[]) {
 	WORD i = datalen;
 
@@ -153,4 +167,58 @@ void HashContext::digest(BYTE hash[]) {
 			hash[i + j * 4] = (state[j] >> (24 - i * 8)) & 0xFF;
 		}
 	}
+}
+
+__device__
+bool HashContext::test(size_t difficulty) {
+	WORD i = datalen;
+
+	// Pad whatever data is left in the buffer.
+	if (datalen < 56) {
+		data[i++] = 0x80;
+		while (i < 56) {
+			data[i++] = 0x00;
+		}
+	} else {
+		data[i++] = 0x80;
+		while (i < 64) {
+			data[i++] = 0x00;
+		}
+		transform();
+		memset(data, 0, 56);
+	}
+
+	// Append to the padding the total message's length in bits and transform.
+	bitlen += datalen * 8;
+	data[63] = bitlen;
+	data[62] = bitlen >> 8;
+	data[61] = bitlen >> 16;
+	data[60] = bitlen >> 24;
+	data[59] = bitlen >> 32;
+	data[58] = bitlen >> 40;
+	data[57] = bitlen >> 48;
+	data[56] = bitlen >> 56;
+	transform();
+
+	int j;
+	for (j = 0; j < difficulty / 8; ++j) {
+		if (state[7 - j] != 0) return false;
+	}
+
+	// j + rem_zero = difficulty
+	// need to check the next rem_zero nibbles to make sure they are 0
+	// which means 8-rem_zero nibbles are non-zero in the next state element
+
+	int rem_zero = difficulty & 7;
+	if (state[7 - j] & ((2 << rem_zero) - 1) != 0) return false;
+
+	return true;
+
+	/**
+	 * [i + j * 4] = [j] >> (24 - i * 8)
+	 * [x] = (j: (x/4)*4, i: x % 4)
+	 * [x] = (i: x & 3, j: x - i)
+	 * [x] = (j: x & (~3), i: x & 3)
+	 * [x] = (state[x >> 2] >> (24 - (x & 3) * 8)) & 0xFF;
+	 */
 }

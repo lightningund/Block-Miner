@@ -99,46 +99,38 @@ __global__
 void test_nonce(
 	HashContext ctx,
 	size_t offset,
-	BYTE golden[],
-	hash_t* hash,
+	size_t* golden,
 	bool* found
 ) {
 	size_t thread = blockIdx.x * blockDim.x + threadIdx.x + offset * gridDim.x * blockDim.x;
-	BYTE nonce[nonce_max];
-	for (int i = 0; i < nonce_max; ++i) {
-		nonce[i] = 'A' + (thread & 0xF);
-		thread >>= 4;
-	}
-	ctx.update(nonce, nonce_max);
-	hash_t temp;
-	ctx.digest(temp.data());
-	for (int i = 0; i < difficulty / 2; ++i) {
-		if (temp[HashContext::DIGEST_SIZE - i - 1] != 0) return;
-	}
+	ctx.update(thread);
 
-	if (difficulty % 2 == 1) {
-		size_t idx = HashContext::DIGEST_SIZE - (difficulty / 2) - 1;
-		if ((temp[idx] & 0xF) != 0) return;
-	}
+	if (!ctx.test(difficulty)) return;
 
 	*found = true;
-	memcpy(golden, nonce, sizeof(nonce));
-	memcpy(hash, &temp, sizeof(temp));
+	*golden = thread;
 }
 
 __global__
-void setup(const BYTE input[], size_t input_len, BYTE nonce[], hash_t* hash, size_t* loops) {
+void setup(const BYTE input[], size_t input_len, BYTE nonce[], size_t* loops) {
 	HashContext ctx{};
 	ctx.update(input, input_len);
 	bool* found = (bool*)malloc(sizeof(bool));
 	*found = false;
+	size_t* offset = (size_t*)malloc(sizeof(size_t));
+	*offset = 0;
 	*loops = 0;
 	while (*found == false) {
-		test_nonce<<<256, 512>>>(ctx, *loops, nonce, hash, found);
+		test_nonce<<<256, 512>>>(ctx, *loops, offset, found);
 		cudaDeviceSynchronize();
 		++(*loops);
 	}
 	free(found);
+	for (int i = 0; i < nonce_max; ++i) {
+		nonce[i] = 'A' + (*offset & 0xF);
+		*offset >>= 4;
+	}
+	free(offset);
 }
 
 void find_nonce(const string& last_hash, Block& block) {
@@ -161,27 +153,25 @@ void find_nonce(const string& last_hash, Block& block) {
 
 	Managed<BYTE> dev_input{input.size()};
 	dev_input = reinterpret_cast<const BYTE*>(input.c_str());
-	Managed<hash_t> dev_hash{};
 	Managed<std::array<BYTE, nonce_max>> dev_nonce{};
 	Managed<size_t> dev_loops{};
 
-	setup<<<1, 1>>>(dev_input.raw, input.size(), dev_nonce.raw->data(), dev_hash.raw, dev_loops.raw);
+	setup<<<1, 1>>>(dev_input.raw, input.size(), dev_nonce.raw->data(), dev_loops.raw);
 	cudaDeviceSynchronize();
 	size_t loops;
 	cudaMemcpy(&loops, dev_loops.raw, sizeof(loops), cudaMemcpyDeviceToHost);
 	std::array<BYTE, nonce_max> nonce;
 	cudaMemcpy(&nonce, dev_nonce.raw, sizeof(nonce), cudaMemcpyDeviceToHost);
-	hash_t hash;
-	cudaMemcpy(&hash, dev_hash.raw, sizeof(hash), cudaMemcpyDeviceToHost);
+
 	std::cout << loops << "\n";
 	std::cout << nonce << "\n";
 	std::cout << std::dec << nonce.size() << "\n";
-	std::cout << hash << "\n";
 
 	block.nonce = std::string{reinterpret_cast<char*>(nonce.data())};
 	block.nonce = block.nonce.substr(0, nonce_max);
 	std::cout << block.nonce << "\n";
 	std::cout << std::dec << block.nonce.size() << "\n";
+	hash_t hash = hash_block(last_hash, block);
 	block.hash = hash_to_string(hash);
 	cudaEventRecord(stop);
     cudaEventSynchronize(stop);

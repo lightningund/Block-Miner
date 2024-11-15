@@ -27,7 +27,13 @@ struct HashContext {
 	void update(const BYTE incoming[], size_t len);
 
 	__device__
+	void update(size_t offset);
+
+	__device__
 	void digest(BYTE hash[]);
+
+	__device__
+	bool test(size_t difficulty);
 
 private:
 	BYTE data[64];

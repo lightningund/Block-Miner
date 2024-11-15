@@ -121,8 +121,7 @@ int main(int argc, char* argv[]) {
 			"little body off the",
 			"ground. The bee, of",
 			"course, flies"
-		},
-		.timestamp = 1000000000
+		}
 	};
 
 	while (true) {
