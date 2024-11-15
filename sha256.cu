@@ -210,7 +210,8 @@ bool HashContext::test(size_t difficulty) {
 	// which means 8-rem_zero nibbles are non-zero in the next state element
 
 	int rem_zero = difficulty & 7;
-	if (state[7 - j] & ((2 << rem_zero) - 1) != 0) return false;
+
+	if ((state[7 - j] & ((1 << (rem_zero * 4)) - 1)) != 0) return false;
 
 	return true;
 

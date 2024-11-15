@@ -1,4 +1,4 @@
-CPPC := g++
+CPPC := clang++
 CPPFLAGS := -g -std=c++20 -Wall
 CUDAFLAGS := --expt-relaxed-constexpr -O2
 

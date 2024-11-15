@@ -48,6 +48,34 @@ string host_hash_block(string last_hash, Block block) {
 
 // Tests the hash on the very first block
 void test_hash() {
+	std::array<unsigned int, 32> fake_hash{};
+	std::array<unsigned int, 8> fake_state{
+		0x00112233,
+		0x44556677,
+		0x8899AABB,
+		0xCCDDEEFF,
+		0x00102030,
+		0x40506070,
+		0x8090A0B0,
+		0xC0D0E0F0
+	};
+
+	for (auto&& elem : fake_state) {
+		std::cout << std::hex << elem << ", ";
+	}
+	std::cout << "\n";
+
+	for (int j = 0; j < 8; ++j) {
+		for (int i = 0; i < 4; ++i) {
+			fake_hash[i + j * 4] = (fake_state[j] >> (24 - i * 8)) & 0xFF;
+		}
+	}
+
+	for (auto&& elem : fake_hash) {
+		std::cout << std::hex << std::setw(2) << std::setfill('0') << elem << ", ";
+	}
+	std::cout << "\n";
+
 	Block test_block{
 		.minedBy = "Prof!",
 		.messages = {"Keep it", "simple.", "Veni", "vidi", "vici"},
@@ -74,6 +102,7 @@ size_t get_small_stamp() {
 	using namespace std::chrono;
 	return duration_cast<seconds>(get_now().time_since_epoch()).count();
 }
+
 int main(int argc, char* argv[]) {
 	test_hash();
 
@@ -125,6 +154,10 @@ int main(int argc, char* argv[]) {
 	};
 
 	while (true) {
+		for (auto& msg : curr_block.messages) {
+			std::random_shuffle(msg.begin(), msg.end());
+		}
+
 		curr_block.timestamp = get_small_stamp();
 		std::cout << "Finding new nonce\n";
 		find_nonce(last_hash, curr_block);

@@ -23,7 +23,8 @@ using json = nlohmann::json;
 using boost::asio::ip::udp;
 using boost::asio::ip::tcp;
 
-constexpr auto known_host = "silicon.cs.umanitoba.ca";
+constexpr auto known_host = "192.168.102.146";
+// constexpr auto known_host = "silicon.cs.umanitoba.ca";
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Block, minedBy, messages, nonce, height, hash, timestamp)
 
@@ -31,7 +32,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Gossip, host, port, name, id)
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(GossipReply, host, port, name)
 
-host_t my_host = "127.0.0.1";
+host_t my_host = "192.168.102.146";
 port_t my_port = 8470;
 name_t my_name = "Ben's Computer";
 
@@ -233,7 +234,7 @@ bool verify_chain() {
 	for (int i = 0; i < chain.size(); ++i) {
 		std::cout << i << "\n";
 		try {
-			if (chain.at(i).hash == "") {
+			if (chain.at(i).messages.size() == 0) {
 				std::cout << "\n\n\nNOOOOOOO block in chain where there should be\n\n\n";
 				chain.erase(chain.begin() + i, chain.end());
 				return true;
@@ -257,6 +258,27 @@ bool verify_chain() {
 	}
 
 	return true;
+}
+
+void get_blocks(udp::socket& us_sock, size_t len) {
+	udp::resolver resolver{io_ctxt};
+	udp::endpoint silicon = *resolver.resolve({udp::v4(), known_host, "8999"});
+
+	// size_t redun = 5; // Number of peers to send the block request to
+	for (size_t i = 0; i < len; ++i) {
+		reqs.push_back(make_request(us_sock, silicon, "{\"type\":\"GET_BLOCK\",\"height\":" + std::to_string(i) + "}", "GET_BLOCK_REPLY"));
+		// size_t start = rand() % peers.size();
+		// size_t sent = 0;
+		// for (size_t j = 0; j < peers.size(); ++j) {
+		// 	Peer peer = peers[(j + start) % peers.size()];
+		// 	if (peer.local_hash == hash && peer.local_height == longest) {
+		// 		reqs.push_back(make_request(us_sock, peer.endpoint, "{\"type\":\"GET_BLOCK\",\"height\":" + std::to_string(i) + "}", "GET_BLOCK_REPLY"));
+		// 		reqs.push_back(make_request(us_sock, peer.endpoint, "{\"type\":\"GET_BLOCK\",\"height\":" + std::to_string(i) + "}", "ANNOUNCE"));
+		// 		++sent;
+		// 		// if (sent >= redun) break;
+		// 	}
+		// }
+	}
 }
 
 // God this function does a lot of loops
@@ -305,21 +327,7 @@ void complete_consensus(udp::socket& us_sock) {
 		}
 	}
 
-	size_t redun = 5; // Number of peers to send the block request to
-
-	for (size_t i = 0; i < longest; ++i) {
-		size_t start = rand() % peers.size();
-		size_t sent = 0;
-		for (size_t j = 0; j < peers.size(); ++j) {
-			Peer peer = peers[(j + start) % peers.size()];
-			if (peer.local_hash == hash && peer.local_height == longest) {
-				reqs.push_back(make_request(us_sock, peer.endpoint, "{\"type\":\"GET_BLOCK\",\"height\":" + std::to_string(i) + "}", "GET_BLOCK_REPLY"));
-				reqs.push_back(make_request(us_sock, peer.endpoint, "{\"type\":\"GET_BLOCK\",\"height\":" + std::to_string(i) + "}", "ANNOUNCE"));
-				++sent;
-				// if (sent >= redun) break;
-			}
-		}
-	}
+	get_blocks(us_sock, longest);
 }
 
 // Create a brand new gossip and send it to the main server
@@ -594,11 +602,11 @@ void main_loop(udp::socket& us_sock, tcp::socket& miner) {
 // Just requests the first 150 blocks from the known peer and verifies them
 void demo_get_chain(udp::socket& us_sock, tcp::socket& miner) {
 	udp::resolver resolver{io_ctxt};
-	udp::endpoint silicon = *resolver.resolve({udp::v4(), "silicon.cs.umanitoba.ca", "8999"});
+	udp::endpoint silicon = *resolver.resolve({udp::v4(), known_host, "8999"});
 
-	chain = std::vector<Block>(250);
+	chain = std::vector<Block>(285);
 
-	for (int i = 0; i < 250; ++i) {
+	for (int i = 0; i < 285; ++i) {
 		reqs.push_back(make_request(us_sock, silicon, "{\"type\":\"GET_BLOCK\",\"height\":" + std::to_string(i) + "}", "GET_BLOCK_REPLY"));
 	}
 
@@ -619,12 +627,12 @@ int main(int argc, char* argv[]) {
 	udp::socket us_sock = udp::socket{io_ctxt, us_ep};
 	std::cout << "Made Socket\n";
 
-	my_host = boost::asio::ip::host_name();
-	std::cout << "Our Address: " << my_host << "\n";
-	udp::resolver resolver{io_ctxt};
-	udp::endpoint public_ep = *resolver.resolve({udp::v4(), my_host, std::to_string(my_port)});
-	my_host = public_ep.address().to_string();
-	std::cout << "Our Address: " << my_host << "\n";
+	// my_host = boost::asio::ip::host_name();
+	// std::cout << "Our Address: " << my_host << "\n";
+	// udp::resolver resolver{io_ctxt};
+	// udp::endpoint public_ep = *resolver.resolve({udp::v4(), my_host, std::to_string(my_port)});
+	// my_host = public_ep.address().to_string();
+	// std::cout << "Our Address: " << my_host << "\n";
 
 	tcp::socket miner{io_ctxt};
 	if (miner_enable) {
@@ -656,7 +664,7 @@ int main(int argc, char* argv[]) {
 
 	std::cout << "Sent Gossip\n";
 
-	demo_get_chain(us_sock, miner);
+	// demo_get_chain(us_sock, miner);
 
 	// Wait a while to collect a list of peers
 	std::cout << "Listening for Peers\n";
