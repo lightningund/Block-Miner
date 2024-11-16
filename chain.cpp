@@ -156,6 +156,8 @@ class Chain {
 
 		bool miner_enable = true;
 
+		std::array<char, 1024> miner_buf{};
+
 		size_t send(json data, const udp::endpoint& targ) {
 			return us_sock.send_to(boost::asio::buffer(data.dump()), targ);
 		}
@@ -417,13 +419,14 @@ class Chain {
 		// Create a brand new gossip and send it to the main server
 		void make_gossip() {
 			std::cout << "Generating Gossip\n";
-			udp::endpoint silicon = *udp_res.resolve({udp::v4(), known_host, "8999"});
+			Peer known = peers[0];
+			// udp::endpoint silicon = *udp_res.resolve({udp::v4(), known_host, "8999"});
 
-			std::cout << silicon.address().to_string() << "\n";
+			std::cout << known.endpoint.address().to_string() << "\n";
 
 			json goss = Gossip{};
 			goss["type"] = "GOSSIP";
-			send(goss, silicon);
+			send(goss, known);
 			sent_gossips.insert(goss["id"]);
 
 			std::cout << "Sent Gossip\n";
@@ -458,7 +461,7 @@ class Chain {
 		}
 
 		// Just requests the first num blocks from the known peer and verifies them
-		void demo_get_chain(udp::socket& us_sock, tcp::socket& miner, size_t num) {
+		void demo_get_chain(size_t num) {
 			udp::endpoint silicon = *udp_res.resolve({udp::v4(), known_host, "8999"});
 
 			chain = std::vector<Block>(num);
@@ -471,32 +474,41 @@ class Chain {
 		void check_for_miner() {
 			if (!miner_enable) return;
 			if (!chain_verified) return;
-			if (get_now() < next_mine_check) return;
-
-			std::array<char, 1024> buf{};
+			// if (get_now() < next_mine_check) return;
 
 			std::cout << "Waiting to read from Miner\n";
-			size_t len = miner_sock.read_some(boost::asio::buffer(buf));
-			std::cout << "Read from miner!\n";
-			next_mine_check = get_now() + mine_check_time;
-			if (len == 0) return;
+			miner_sock.async_read_some(boost::asio::buffer(miner_buf), [this](const boost::system::error_code& err, size_t len) {
+				std::cout << "Read from miner!\n";
+				next_mine_check = get_now() + mine_check_time;
+				if (len == 0) {
+					std::cerr << "Empty Read\n";
+					check_for_miner();
+					return;
+				}
+				if (err) {
+					std::cerr << err.message() << "\n";
+					check_for_miner();
+					return;
+				}
 
-			string rec{buf.data()};
-			rec = rec.substr(0, len);
-			std::cout << len << "\n";
-			std::cout << rec << "\n";
-			try {
-				json block = json::parse(rec);
-				block["height"] = chain.size();
-				Block new_block = block.template get<Block>();
-				bool added = add_block(new_block);
+				string rec{miner_buf.data()};
+				rec = rec.substr(0, len);
+				std::cout << len << "\n";
+				std::cout << rec << "\n";
+				try {
+					json block = json::parse(rec);
+					block["height"] = chain.size();
+					Block new_block = block.template get<Block>();
+					bool added = add_block(new_block);
 
-				if (added) new_block_made = true;
-			} catch (std::exception& err) {
-				std::cerr << err.what() << "\n";
-			}
+					if (added) new_block_made = true;
+				} catch (std::exception& err) {
+					std::cerr << err.what() << "\n";
+				}
 
-			miner_sock.send(boost::asio::buffer(chain[chain.size() - 1].hash));
+				miner_sock.send(boost::asio::buffer(chain[chain.size() - 1].hash));
+				check_for_miner();
+			});
 		}
 
 		void handle_new_block() {
@@ -522,7 +534,7 @@ class Chain {
 
 			handle_new_block();
 
-			check_for_miner();
+			// check_for_miner();
 
 			// Make sure to generate gossip if we haven't sent anything in a while
 			if (last_gossip + re_gossip_time < now) {
@@ -561,6 +573,15 @@ class Chain {
 
 		void main_loop() {
 			std::cout << "New Loop!\n";
+
+			if (io_ctxt.stopped()) {
+				std::cout << "IO Was Stopped!\n";
+				io_ctxt.restart();
+				std::cout << "IO Restarted!\n";
+			}
+			std::cout << "Trying to poll IO\n";
+			io_ctxt.poll();
+			std::cout << "IO Polled\n";
 
 			self_check();
 
@@ -604,6 +625,7 @@ class Chain {
 					if (miner_enable) {
 						miner_sock.send(boost::asio::buffer(chain[chain.size() - 1].hash));
 						next_mine_check = get_now() + mine_check_time;
+						check_for_miner();
 					}
 				}
 			}
@@ -633,7 +655,7 @@ class Chain {
 			// std::cout << "Our Address: " << my_host << "\n";
 			// udp::endpoint public_ep = *udp_res.resolve({udp::v4(), my_host, std::to_string(my_port)});
 			// my_host = public_ep.address().to_string();
-			// std::cout << "Our Address: " << my_host << "\n";
+			std::cout << "Our Address: " << my_host << "\n";
 
 			if (miner_enable) {
 				tcp::acceptor acceptor{io_ctxt, tcp::endpoint{tcp::v4(), 50001}};
@@ -659,11 +681,13 @@ class Chain {
 			std::cout << "Our Address: " << my_host << "\n";
 			std::cout << "Our Port: " << my_port << "\n";
 
+			udp::endpoint silicon = *udp_res.resolve({udp::v4(), known_host, "8999"});
+			add_peer(silicon);
 			make_gossip();
 
-			// demo_get_chain(us_sock, miner, 150);
+			// demo_get_chain(100);
 
-			collect_peers();
+			// collect_peers();
 			request_stats();
 
 			while (true) {

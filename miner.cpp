@@ -112,6 +112,10 @@ size_t get_small_stamp() {
 	return duration_cast<seconds>(get_now().time_since_epoch()).count();
 }
 
+nanoseconds max_time;
+nanoseconds avg_time;
+size_t num_blocks;
+
 int main(int argc, char* argv[]) {
 	test_hash();
 
@@ -169,7 +173,16 @@ int main(int argc, char* argv[]) {
 
 		curr_block.timestamp = get_small_stamp();
 		std::cout << "Finding new nonce\n";
+		auto start = get_now();
 		find_nonce(last_hash, curr_block);
+		++num_blocks;
+		auto dur = get_now() - start;
+		max_time = std::max(dur, max_time);
+		avg_time *= (num_blocks - 1);
+		avg_time += dur;
+		avg_time /= num_blocks;
+		std::cout << "Average block time: " << avg_time.count()
+			<< "ns\nMax block time: " << max_time.count() << "ns\n";
 		json block = curr_block;
 		std::cout << block << "\n";
 		std::cout << "Sending block to chain\n";
