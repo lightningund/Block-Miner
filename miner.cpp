@@ -15,13 +15,22 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Block, minedBy, messages, nonce, height, hash
 #include <boost/asio.hpp>
 using boost::asio::ip::tcp;
 
+#include "kernel.cuh"
+
 host_t my_host = "127.0.0.1";
 port_t my_port = 50002;
 name_t my_name = "Ben's GPU";
 
 boost::asio::io_context io_ctxt{};
 
-#include "kernel.cuh"
+// Total time mining
+// Total time running
+// Average number of loops per nonce
+// Average time per nonce
+// Average time per loop (might be redundant?)
+// Total number mined
+// Max loops
+// Max time
 
 string host_hash_block(string last_hash, Block block) {
 	string input = last_hash;
