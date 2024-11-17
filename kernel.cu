@@ -130,6 +130,104 @@ void setup(const BYTE input[], size_t input_len, size_t* golden) {
 	printf("Loops: %lu\n", loops);
 }
 
+__global__
+void finder_setup(HashContext* ctx_ptr, size_t* golden) {
+	bool* found = (bool*)malloc(sizeof(bool));
+	*found = false;
+	size_t loops = 0;
+	while (*found == false) {
+		test_nonce<<<512, 512>>>(*ctx_ptr, loops, golden, found);
+		++loops;
+	}
+	free(found);
+	printf("Loops: %lu\n", loops);
+}
+
+struct FinderData {
+	Block& curr;
+	string last_hash;
+	HashContext ctx;
+	Managed<HashContext> dev_ctx;
+};
+
+Finder::Finder(Block& block) {
+	data = new FinderData{block, "", {}, {}};
+}
+
+Finder::~Finder() {
+	delete data;
+}
+
+void Finder::set_block(Block& block) {
+	data->curr = block;
+}
+
+void Finder::set_last_hash(const string& last_hash) {
+	data->last_hash = last_hash;
+	data->ctx = HashContext{};
+	string input = last_hash;
+	input += data->curr.minedBy;
+
+	for (auto&& msg : data->curr.messages) {
+		input += msg;
+	}
+
+	uint64_t casted_stamp = static_cast<uint64_t>(data->curr.timestamp);
+	char* stamp_chars = reinterpret_cast<char*>(&casted_stamp);
+	for (int i = 7; i >= 0; --i) {
+		input += stamp_chars[i];
+	}
+
+	data->ctx.update(input.c_str(), input.size());
+	data->dev_ctx = &data->ctx;
+}
+
+void Finder::find_nonce(const std::function<void(void)> refresher) {
+	cudaEvent_t start, stop;
+	cudaEventCreate(&start);
+	cudaEventCreate(&stop);
+	cudaEventRecord(start);
+	Managed<size_t> dev_golden{};
+
+	Managed<bool> dev_found{};
+	bool found = false;
+	Managed<size_t> dev_loops{};
+	size_t loops = 0;
+	while (found == false) {
+		test_nonce<<<512, 512>>>(*(data->dev_ctx), *dev_loops, dev_golden, dev_found);
+		++loops;
+		dev_loops = &loops;
+		cudaMemcpy(&found, dev_found, sizeof(bool), cudaMemcpyDeviceToHost);
+		cudaDeviceSynchronize();
+		refresher();
+	}
+	printf("Loops: %lu\n", loops);
+
+	size_t golden;
+	cudaMemcpy(&golden, dev_golden, sizeof(size_t), cudaMemcpyDeviceToHost);
+
+	std::array<BYTE, nonce_max> nonce;
+	for (int i = 0; i < nonce_max; ++i) {
+		nonce[i] = 'A' + (golden & 0xF);
+		golden >>= 4;
+	}
+
+	std::cout << nonce << "\n";
+	std::cout << std::dec << nonce.size() << "\n";
+
+	data->curr.nonce = std::string{reinterpret_cast<char*>(nonce.data())};
+	data->curr.nonce = data->curr.nonce.substr(0, nonce_max);
+	std::cout << data->curr.nonce << "\n";
+	std::cout << std::dec << data->curr.nonce.size() << "\n";
+	hash_t hash = hash_block(data->last_hash, data->curr);
+	data->curr.hash = hash_to_string(hash);
+	cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    float time;
+    cudaEventElapsedTime(&time, start, stop);
+	std::cout << "Finding the nonce took: " << time << " ms\n";
+}
+
 void find_nonce(const string& last_hash, Block& block) {
 	cudaEvent_t start, stop;
 	cudaEventCreate(&start);

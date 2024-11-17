@@ -258,6 +258,7 @@ class Chain {
 			if (b.height != chain.size()) return false;
 			if (chain_verified && hash_block(chain[chain.size() - 1].hash, b) != b.hash) return false;
 			chain.push_back(b);
+			miner_sock.send(boost::asio::buffer(b.hash));
 			return true;
 		}
 

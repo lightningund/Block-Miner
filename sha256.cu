@@ -124,7 +124,7 @@ void HashContext::update(const BYTE incoming[], size_t len) {
 __host__ __device__
 void HashContext::update(const char incoming[], size_t len) {
 	for (size_t i = 0; i < len; ++i) {
-		data[datalen] = static_cast<const BYTE>(incoming[i]);
+		data[datalen] = static_cast<BYTE>(incoming[i]);
 		datalen++;
 		if (datalen == 64) {
 			transform();

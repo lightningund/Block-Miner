@@ -118,6 +118,27 @@ nanoseconds max_time;
 nanoseconds min_time;
 size_t num_blocks;
 
+void listener(tcp::socket& chain, Finder* finder, std::array<char, 1024>* buf) {
+	chain.async_read_some(boost::asio::buffer(*buf), [&](const boost::system::error_code& err, size_t len) {
+		if (len == 0) {
+			std::cout << "Empty read\n";
+			listener(chain, finder, buf);
+			return;
+		}
+		if (err) {
+			std::cerr << err.message() << "\n";
+			listener(chain, finder, buf);
+			return;
+		}
+
+		std::cout << "Read new hash!\n";
+
+		string hash{(*buf).data()};
+		hash = hash.substr(0, len);
+		finder->set_last_hash(hash);
+	});
+}
+
 int main(int argc, char* argv[]) {
 	test_hash();
 
@@ -171,15 +192,33 @@ int main(int argc, char* argv[]) {
 	very_start = get_now();
 	min_time = 10000min;
 
+	Finder finder{curr_block};
+
+	std::array<char, 1024> chain_buf{};
+	listener(chain, &finder, &chain_buf);
+
+	const auto refresher = []() {
+		if (io_ctxt.stopped()) {
+			std::cout << "IO Was Stopped!\n";
+			io_ctxt.restart();
+			std::cout << "IO Restarted!\n";
+		}
+		std::cout << "Trying to poll IO\n";
+		io_ctxt.poll();
+		std::cout << "IO Polled\n";
+	};
+
 	while (true) {
 		for (auto& msg : curr_block.messages) {
 			std::random_shuffle(msg.begin(), msg.end());
 		}
 
 		curr_block.timestamp = get_small_stamp();
+		finder.set_last_hash(last_hash);
 		std::cout << "Finding new nonce\n";
 		auto start = get_now();
-		find_nonce(last_hash, curr_block);
+		finder.find_nonce(refresher);
+		// find_nonce(last_hash, curr_block);
 		++num_blocks;
 		auto dur = get_now() - start;
 		max_time = std::max(dur, max_time);
