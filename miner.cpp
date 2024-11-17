@@ -136,6 +136,7 @@ void listener(tcp::socket& chain, Finder* finder, std::array<char, 1024>* buf) {
 		string hash{(*buf).data()};
 		hash = hash.substr(0, len);
 		finder->set_last_hash(hash);
+		listener(chain, finder, buf);
 	});
 }
 
@@ -203,9 +204,7 @@ int main(int argc, char* argv[]) {
 			io_ctxt.restart();
 			std::cout << "IO Restarted!\n";
 		}
-		std::cout << "Trying to poll IO\n";
 		io_ctxt.poll();
-		std::cout << "IO Polled\n";
 	};
 
 	while (true) {

@@ -130,19 +130,6 @@ void setup(const BYTE input[], size_t input_len, size_t* golden) {
 	printf("Loops: %lu\n", loops);
 }
 
-__global__
-void finder_setup(HashContext* ctx_ptr, size_t* golden) {
-	bool* found = (bool*)malloc(sizeof(bool));
-	*found = false;
-	size_t loops = 0;
-	while (*found == false) {
-		test_nonce<<<512, 512>>>(*ctx_ptr, loops, golden, found);
-		++loops;
-	}
-	free(found);
-	printf("Loops: %lu\n", loops);
-}
-
 struct FinderData {
 	Block& curr;
 	string last_hash;
@@ -162,7 +149,7 @@ void Finder::set_block(Block& block) {
 	data->curr = block;
 }
 
-void Finder::set_last_hash(const string& last_hash) {
+void Finder::set_last_hash(const string last_hash) {
 	data->last_hash = last_hash;
 	data->ctx = HashContext{};
 	string input = last_hash;
@@ -199,7 +186,11 @@ void Finder::find_nonce(const std::function<void(void)> refresher) {
 		dev_loops = &loops;
 		cudaMemcpy(&found, dev_found, sizeof(bool), cudaMemcpyDeviceToHost);
 		cudaDeviceSynchronize();
-		refresher();
+
+		// Only run the io check every 256 loops
+		if ((loops & 0xFF) == 0) {
+			refresher();
+		}
 	}
 	printf("Loops: %lu\n", loops);
 
