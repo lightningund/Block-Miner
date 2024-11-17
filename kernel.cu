@@ -29,6 +29,10 @@ struct Managed {
 	void operator=(const T* ptr) {
 		cudaMemcpy(raw, ptr, size, cudaMemcpyHostToDevice);
 	}
+
+	operator T*() {
+		return raw;
+	}
 };
 
 template<size_t len>
@@ -112,25 +116,18 @@ void test_nonce(
 }
 
 __global__
-void setup(const BYTE input[], size_t input_len, BYTE nonce[], size_t* loops) {
+void setup(const BYTE input[], size_t input_len, size_t* golden) {
 	HashContext ctx{};
 	ctx.update(input, input_len);
 	bool* found = (bool*)malloc(sizeof(bool));
 	*found = false;
-	size_t* offset = (size_t*)malloc(sizeof(size_t));
-	*offset = 0;
-	*loops = 0;
+	size_t loops = 0;
 	while (*found == false) {
-		test_nonce<<<256, 512>>>(ctx, *loops, offset, found);
-		cudaDeviceSynchronize();
-		++(*loops);
+		test_nonce<<<512, 512>>>(ctx, loops, golden, found);
+		++loops;
 	}
 	free(found);
-	for (int i = 0; i < nonce_max; ++i) {
-		nonce[i] = 'A' + (*offset & 0xF);
-		*offset >>= 4;
-	}
-	free(offset);
+	printf("Loops: %d\n", loops);
 }
 
 void find_nonce(const string& last_hash, Block& block) {
@@ -153,17 +150,19 @@ void find_nonce(const string& last_hash, Block& block) {
 
 	Managed<BYTE> dev_input{input.size()};
 	dev_input = reinterpret_cast<const BYTE*>(input.c_str());
-	Managed<std::array<BYTE, nonce_max>> dev_nonce{};
-	Managed<size_t> dev_loops{};
+	Managed<size_t> dev_golden{};
 
-	setup<<<1, 1>>>(dev_input.raw, input.size(), dev_nonce.raw->data(), dev_loops.raw);
+	setup<<<1, 1>>>(dev_input, input.size(), dev_golden);
 	cudaDeviceSynchronize();
-	size_t loops;
-	cudaMemcpy(&loops, dev_loops.raw, sizeof(loops), cudaMemcpyDeviceToHost);
-	std::array<BYTE, nonce_max> nonce;
-	cudaMemcpy(&nonce, dev_nonce.raw, sizeof(nonce), cudaMemcpyDeviceToHost);
+	size_t golden;
+	cudaMemcpy(&golden, dev_golden, sizeof(size_t), cudaMemcpyDeviceToHost);
 
-	std::cout << loops << "\n";
+	std::array<BYTE, nonce_max> nonce;
+	for (int i = 0; i < nonce_max; ++i) {
+		nonce[i] = 'A' + (golden & 0xF);
+		golden >>= 4;
+	}
+
 	std::cout << nonce << "\n";
 	std::cout << std::dec << nonce.size() << "\n";
 

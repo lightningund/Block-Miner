@@ -353,14 +353,14 @@ class Chain {
 			return true;
 		}
 
-		void get_blocks(size_t len) {
-			udp::endpoint silicon = *udp_res.resolve({udp::v4(), known_host, "8999"});
+		void get_blocks(size_t len, std::vector<Peer> agreers) {
+			// udp::endpoint silicon = *udp_res.resolve({udp::v4(), known_host, "8999"});
 
 			for (size_t i = 0; i < len; ++i) {
-				reqs.push_back(make_request(silicon, "{\"type\":\"GET_BLOCK\",\"height\":" + std::to_string(i) + "}", "GET_BLOCK_REPLY"));
-				// for (auto& peer : agreed) {
-				// 	reqs.push_back(make_request(us_sock, peer.endpoint, "{\"type\":\"GET_BLOCK\",\"height\":" + std::to_string(i) + "}", "GET_BLOCK_REPLY"));
-				// }
+				// reqs.push_back(make_request(silicon, "{\"type\":\"GET_BLOCK\",\"height\":" + std::to_string(i) + "}", "GET_BLOCK_REPLY"));
+				for (auto& peer : agreers) {
+					reqs.push_back(make_request(peer.endpoint, "{\"type\":\"GET_BLOCK\",\"height\":" + std::to_string(i) + "}", "GET_BLOCK_REPLY"));
+				}
 			}
 		}
 
@@ -413,7 +413,12 @@ class Chain {
 				}
 			}
 
-			get_blocks(longest);
+			std::vector<Peer> agreers;
+			std::copy_if(peers.begin(), peers.end(), std::back_inserter(agreers), [longest, hash](Peer p) {
+				return (p.local_height == longest && p.local_hash == hash);
+			});
+
+			get_blocks(longest, agreers);
 		}
 
 		// Create a brand new gossip and send it to the main server

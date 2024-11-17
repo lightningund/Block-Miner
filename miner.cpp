@@ -112,8 +112,10 @@ size_t get_small_stamp() {
 	return duration_cast<seconds>(get_now().time_since_epoch()).count();
 }
 
+timepoint very_start;
+nanoseconds total_time;
 nanoseconds max_time;
-nanoseconds avg_time;
+nanoseconds min_time;
 size_t num_blocks;
 
 int main(int argc, char* argv[]) {
@@ -166,6 +168,9 @@ int main(int argc, char* argv[]) {
 		}
 	};
 
+	very_start = get_now();
+	min_time = 10000min;
+
 	while (true) {
 		for (auto& msg : curr_block.messages) {
 			std::random_shuffle(msg.begin(), msg.end());
@@ -178,11 +183,16 @@ int main(int argc, char* argv[]) {
 		++num_blocks;
 		auto dur = get_now() - start;
 		max_time = std::max(dur, max_time);
-		avg_time *= (num_blocks - 1);
-		avg_time += dur;
-		avg_time /= num_blocks;
-		std::cout << "Average block time: " << avg_time.count()
-			<< "ns\nMax block time: " << max_time.count() << "ns\n";
+		min_time = std::min(dur, min_time);
+		total_time += dur;
+		auto runtime = get_now() - very_start;
+		std::cout << "Average block time: " << duration_cast<milliseconds>(total_time / num_blocks).count()
+			<< "ms\nMax block time: " << duration_cast<milliseconds>(max_time).count()
+			<< "ms\nMin block time: " << duration_cast<milliseconds>(min_time).count()
+			<< "ms\nTotal blocks: " << num_blocks
+			<< "\nTotal mining time: " << duration_cast<milliseconds>(total_time).count()
+			<< "ms\nTotal running time: " << duration_cast<milliseconds>(runtime).count()
+			<< "ms\nEfficiency: " << ((float)total_time.count() / runtime.count()) * 100 << "%\n";
 		json block = curr_block;
 		std::cout << block << "\n";
 		std::cout << "Sending block to chain\n";
