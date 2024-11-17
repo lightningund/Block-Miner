@@ -130,6 +130,55 @@ void setup(const BYTE input[], size_t input_len, size_t* golden) {
 	printf("Loops: %lu\n", loops);
 }
 
+void find_nonce(const string& last_hash, Block& block) {
+	cudaEvent_t start, stop;
+	cudaEventCreate(&start);
+	cudaEventCreate(&stop);
+	cudaEventRecord(start);
+	string input = last_hash;
+	input += block.minedBy;
+
+	for (auto&& msg : block.messages) {
+		input += msg;
+	}
+
+	uint64_t casted_stamp = static_cast<uint64_t>(block.timestamp);
+	char* stamp_chars = reinterpret_cast<char*>(&casted_stamp);
+	for (int i = 7; i >= 0; --i) {
+		input += stamp_chars[i];
+	}
+
+	Managed<BYTE> dev_input{input.size()};
+	dev_input = reinterpret_cast<const BYTE*>(input.c_str());
+	Managed<size_t> dev_golden{};
+
+	setup<<<1, 1>>>(dev_input, input.size(), dev_golden);
+	cudaDeviceSynchronize();
+	size_t golden;
+	cudaMemcpy(&golden, dev_golden, sizeof(size_t), cudaMemcpyDeviceToHost);
+
+	std::array<BYTE, nonce_max> nonce;
+	for (int i = 0; i < nonce_max; ++i) {
+		nonce[i] = 'A' + (golden & 0xF);
+		golden >>= 4;
+	}
+
+	std::cout << nonce << "\n";
+	std::cout << std::dec << nonce.size() << "\n";
+
+	block.nonce = std::string{reinterpret_cast<char*>(nonce.data())};
+	block.nonce = block.nonce.substr(0, nonce_max);
+	std::cout << block.nonce << "\n";
+	std::cout << std::dec << block.nonce.size() << "\n";
+	hash_t hash = hash_block(last_hash, block);
+	block.hash = hash_to_string(hash);
+	cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    float time;
+    cudaEventElapsedTime(&time, start, stop);
+	std::cout << "Finding the nonce took: " << time << " ms\n";
+}
+
 struct FinderData {
 	Block& curr;
 	string last_hash;
@@ -178,17 +227,18 @@ void Finder::find_nonce(const std::function<void(void)> refresher) {
 
 	Managed<bool> dev_found{};
 	bool found = false;
+	dev_found = &found;
 	Managed<size_t> dev_loops{};
 	size_t loops = 0;
 	while (found == false) {
+		dev_loops = &loops;
 		test_nonce<<<512, 512>>>(*(data->dev_ctx), *dev_loops, dev_golden, dev_found);
 		++loops;
-		dev_loops = &loops;
 		cudaMemcpy(&found, dev_found, sizeof(bool), cudaMemcpyDeviceToHost);
 		cudaDeviceSynchronize();
 
-		// Only run the io check every 256 loops
-		if ((loops & 0xFF) == 0) {
+		// Only run the io check every 4096 loops
+		if ((loops & 0xFFF) == 0) {
 			refresher();
 		}
 	}
@@ -212,55 +262,6 @@ void Finder::find_nonce(const std::function<void(void)> refresher) {
 	std::cout << std::dec << data->curr.nonce.size() << "\n";
 	hash_t hash = hash_block(data->last_hash, data->curr);
 	data->curr.hash = hash_to_string(hash);
-	cudaEventRecord(stop);
-    cudaEventSynchronize(stop);
-    float time;
-    cudaEventElapsedTime(&time, start, stop);
-	std::cout << "Finding the nonce took: " << time << " ms\n";
-}
-
-void find_nonce(const string& last_hash, Block& block) {
-	cudaEvent_t start, stop;
-	cudaEventCreate(&start);
-	cudaEventCreate(&stop);
-	cudaEventRecord(start);
-	string input = last_hash;
-	input += block.minedBy;
-
-	for (auto&& msg : block.messages) {
-		input += msg;
-	}
-
-	uint64_t casted_stamp = static_cast<uint64_t>(block.timestamp);
-	char* stamp_chars = reinterpret_cast<char*>(&casted_stamp);
-	for (int i = 7; i >= 0; --i) {
-		input += stamp_chars[i];
-	}
-
-	Managed<BYTE> dev_input{input.size()};
-	dev_input = reinterpret_cast<const BYTE*>(input.c_str());
-	Managed<size_t> dev_golden{};
-
-	setup<<<1, 1>>>(dev_input, input.size(), dev_golden);
-	cudaDeviceSynchronize();
-	size_t golden;
-	cudaMemcpy(&golden, dev_golden, sizeof(size_t), cudaMemcpyDeviceToHost);
-
-	std::array<BYTE, nonce_max> nonce;
-	for (int i = 0; i < nonce_max; ++i) {
-		nonce[i] = 'A' + (golden & 0xF);
-		golden >>= 4;
-	}
-
-	std::cout << nonce << "\n";
-	std::cout << std::dec << nonce.size() << "\n";
-
-	block.nonce = std::string{reinterpret_cast<char*>(nonce.data())};
-	block.nonce = block.nonce.substr(0, nonce_max);
-	std::cout << block.nonce << "\n";
-	std::cout << std::dec << block.nonce.size() << "\n";
-	hash_t hash = hash_block(last_hash, block);
-	block.hash = hash_to_string(hash);
 	cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     float time;

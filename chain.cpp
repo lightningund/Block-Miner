@@ -628,6 +628,7 @@ class Chain {
 				if (!chain_verified && reqs.size() == 0) {
 					std::cout << "Verifying Chain!\n";
 					verify_chain();
+					// chain_verified = true;
 					if (miner_enable) {
 						miner_sock.send(boost::asio::buffer(chain[chain.size() - 1].hash));
 						next_mine_check = get_now() + mine_check_time;
@@ -693,7 +694,7 @@ class Chain {
 
 			// demo_get_chain(100);
 
-			// collect_peers();
+			collect_peers();
 			request_stats();
 
 			while (true) {

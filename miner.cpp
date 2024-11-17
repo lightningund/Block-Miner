@@ -118,8 +118,8 @@ nanoseconds max_time;
 nanoseconds min_time;
 size_t num_blocks;
 
-void listener(tcp::socket& chain, Finder* finder, std::array<char, 1024>* buf) {
-	chain.async_read_some(boost::asio::buffer(*buf), [&](const boost::system::error_code& err, size_t len) {
+void listener(tcp::socket& chain, Finder& finder, std::array<char, 64>& buf) {
+	boost::asio::async_read(chain, boost::asio::buffer(buf), [&](const boost::system::error_code& err, size_t len) {
 		if (len == 0) {
 			std::cout << "Empty read\n";
 			listener(chain, finder, buf);
@@ -133,9 +133,15 @@ void listener(tcp::socket& chain, Finder* finder, std::array<char, 1024>* buf) {
 
 		std::cout << "Read new hash!\n";
 
-		string hash{(*buf).data()};
+		std::cout.write(buf.data(), 64);
+		std::cout << "\n";
+
+		string hash{buf.data()};
 		hash = hash.substr(0, len);
-		finder->set_last_hash(hash);
+
+		std::cout << len << " " << hash << "\n";
+
+		finder.set_last_hash(hash);
 		listener(chain, finder, buf);
 	});
 }
@@ -195,8 +201,8 @@ int main(int argc, char* argv[]) {
 
 	Finder finder{curr_block};
 
-	std::array<char, 1024> chain_buf{};
-	listener(chain, &finder, &chain_buf);
+	std::array<char, 64> chain_buf{};
+	listener(chain, finder, chain_buf);
 
 	const auto refresher = []() {
 		if (io_ctxt.stopped()) {
@@ -205,6 +211,7 @@ int main(int argc, char* argv[]) {
 			std::cout << "IO Restarted!\n";
 		}
 		io_ctxt.poll();
+		std::cout << "IO Polled";
 	};
 
 	while (true) {
@@ -235,7 +242,7 @@ int main(int argc, char* argv[]) {
 		std::cout << block << "\n";
 		std::cout << "Sending block to chain\n";
 		chain.send(boost::asio::buffer(block.dump()));
-		curr_block.timestamp++;
+		last_hash = curr_block.hash;
 		// Block until we read something
 		std::cout << "Waiting until we get something back\n";
 		len = chain.read_some(boost::asio::buffer(buf), err);
