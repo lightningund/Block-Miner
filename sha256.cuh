@@ -20,19 +20,22 @@
 struct HashContext {
 	static constexpr size_t DIGEST_SIZE = 32;
 
-	__device__
+	__host__ __device__
 	HashContext();
 
-	__device__
+	__host__ __device__
 	void update(const BYTE incoming[], size_t len);
 
-	__device__
+	__host__ __device__
+	void update(const char incoming[], size_t len);
+
+	__host__ __device__
 	void update(size_t offset);
 
-	__device__
+	__host__ __device__
 	void digest(BYTE hash[]);
 
-	__device__
+	__host__ __device__
 	bool test(size_t difficulty);
 
 private:
@@ -41,7 +44,7 @@ private:
 	unsigned long long bitlen;
 	WORD state[8];
 
-	__device__
+	__host__ __device__
 	__forceinline__
 	void transform();
 };

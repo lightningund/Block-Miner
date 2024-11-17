@@ -127,7 +127,7 @@ void setup(const BYTE input[], size_t input_len, size_t* golden) {
 		++loops;
 	}
 	free(found);
-	printf("Loops: %d\n", loops);
+	printf("Loops: %lu\n", loops);
 }
 
 void find_nonce(const string& last_hash, Block& block) {

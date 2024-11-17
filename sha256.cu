@@ -31,8 +31,14 @@
 #define SIG0(x) (ROTRIGHT(x,7) ^ ROTRIGHT(x,18) ^ ((x) >> 3))
 #define SIG1(x) (ROTRIGHT(x,17) ^ ROTRIGHT(x,19) ^ ((x) >> 10))
 
+#ifdef __CUDA_ARCH__
+#define CONSTANT __constant__
+#else
+#define CONSTANT
+#endif
+
 /**************************** VARIABLES *****************************/
-__constant__ WORD k[64] = {
+CONSTANT WORD k[64] = {
 	0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
 	0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
 	0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
@@ -44,7 +50,7 @@ __constant__ WORD k[64] = {
 };
 
 /*********************** FUNCTION DEFINITIONS ***********************/
-__device__
+__host__ __device__
 __forceinline__
 void HashContext::transform() {
 	WORD a, b, c, d, e, f, g, h, t1, t2, m[64];
@@ -88,7 +94,7 @@ void HashContext::transform() {
 	state[7] += h;
 }
 
-__device__
+__host__ __device__
 HashContext::HashContext() {
 	datalen = 0;
 	bitlen = 0;
@@ -102,7 +108,7 @@ HashContext::HashContext() {
 	state[7] = 0x5be0cd19;
 }
 
-__device__
+__host__ __device__
 void HashContext::update(const BYTE incoming[], size_t len) {
 	for (size_t i = 0; i < len; ++i) {
 		data[datalen] = incoming[i];
@@ -115,7 +121,20 @@ void HashContext::update(const BYTE incoming[], size_t len) {
 	}
 }
 
-__device__
+__host__ __device__
+void HashContext::update(const char incoming[], size_t len) {
+	for (size_t i = 0; i < len; ++i) {
+		data[datalen] = static_cast<const BYTE>(incoming[i]);
+		datalen++;
+		if (datalen == 64) {
+			transform();
+			bitlen += 512;
+			datalen = 0;
+		}
+	}
+}
+
+__host__ __device__
 void HashContext::update(size_t offset) {
 	for (size_t i = 0; i < sizeof(size_t) * 2; ++i) {
 		data[datalen] = 'A' + (offset & 0xF);
@@ -129,7 +148,7 @@ void HashContext::update(size_t offset) {
 	}
 }
 
-__device__
+__host__ __device__
 void HashContext::digest(BYTE hash[]) {
 	WORD i = datalen;
 
@@ -169,7 +188,7 @@ void HashContext::digest(BYTE hash[]) {
 	}
 }
 
-__device__
+__host__ __device__
 bool HashContext::test(size_t difficulty) {
 	WORD i = datalen;
 
