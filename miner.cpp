@@ -147,12 +147,14 @@ void listener(tcp::socket& chain, Finder& finder, std::array<char, 64>& buf) {
 }
 
 int main(int argc, char* argv[]) {
-	test_hash();
+	// test_hash();
 
 	if (argc < 2) {
 		std::cerr << "Please Give me a host idk what to do\n";
 		return -1;
 	}
+
+	std::srand(std::time(nullptr));
 
 	tcp::resolver resolver{io_ctxt};
 	auto points = resolver.resolve(argv[1], "50001");
@@ -168,6 +170,7 @@ int main(int argc, char* argv[]) {
 	resp = resp.substr(0, len);
 
 	std::cout << resp << "\n";
+	size_t idx = std::stoi(resp);
 
 	string msg = "Sup hoe";
 	chain.send(boost::asio::buffer(msg));
@@ -223,7 +226,7 @@ int main(int argc, char* argv[]) {
 		finder.set_last_hash(last_hash);
 		std::cout << "Finding new nonce\n";
 		auto start = get_now();
-		finder.find_nonce(refresher);
+		finder.find_nonce(refresher, idx);
 		// find_nonce(last_hash, curr_block);
 		++num_blocks;
 		auto dur = get_now() - start;

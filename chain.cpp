@@ -144,19 +144,27 @@ class Chain {
 		timepoint next_mine_check;
 		timepoint last_gossip;
 
-		std::vector<Block> chain{};
-
 		udp::resolver udp_res{io_ctxt};
 		udp::socket us_sock{io_ctxt, udp::endpoint{udp::v4(), my_port}};
-		tcp::socket miner_sock{io_ctxt};
 
 		bool in_consensus = false;
 		bool chain_verified = false;
+
+		std::vector<tcp::socket*> miners{};
+		std::vector<std::array<char, 1024>> miner_bufs{};
+
+		std::vector<Block> chain{};
 		bool new_block_made = false;
 
-		bool miner_enable = true;
-
-		std::array<char, 1024> miner_buf{};
+		bool add_block(Block b) {
+			if (b.height != chain.size()) return false;
+			if (chain_verified && hash_block(chain[chain.size() - 1].hash, b) != b.hash) return false;
+			chain.push_back(b);
+			for (auto& miner : miners) {
+				miner->send(boost::asio::buffer(b.hash));
+			}
+			return true;
+		}
 
 		size_t send(json data, const udp::endpoint& targ) {
 			return us_sock.send_to(boost::asio::buffer(data.dump()), targ);
@@ -196,6 +204,40 @@ class Chain {
 			} catch (const std::exception& e) {
 				std::cerr << e.what() << "\n";
 			}
+		}
+
+		void check_miner(size_t idx) {
+			miners[idx]->async_read_some(boost::asio::buffer(miner_bufs[idx]), [this, idx](const boost::system::error_code& err, size_t len) {
+				std::cout << "Read from miner!\n";
+				try {
+					if (len == 0) {
+						throw std::runtime_error{"Empty Read"};
+					}
+					if (err) {
+						throw err;
+					}
+
+					string rec{miner_bufs[idx].data()};
+					rec = rec.substr(0, len);
+					std::cout << len << "\n";
+					std::cout << rec << "\n";
+					try {
+						json block = json::parse(rec);
+						block["height"] = chain.size();
+						Block new_block = block.template get<Block>();
+						bool added = add_block(new_block);
+
+						if (added) new_block_made = true;
+					} catch (std::exception& err) {
+						std::cerr << err.what() << "\n";
+					}
+				} catch (std::exception& err) {
+					std::cerr << err.what() << "\n";
+				}
+
+				miners[idx]->send(boost::asio::buffer(chain[chain.size() - 1].hash));
+				check_miner(idx);
+			});
 		}
 
 		// Can receive up to 1024 characters at a time
@@ -252,14 +294,6 @@ class Chain {
 				std::cout << "Stats: " << reply << "\n\tto " << target.address().to_string() << "\n";
 				send(reply, target);
 			}
-		}
-
-		bool add_block(Block b) {
-			if (b.height != chain.size()) return false;
-			if (chain_verified && hash_block(chain[chain.size() - 1].hash, b) != b.hash) return false;
-			chain.push_back(b);
-			miner_sock.send(boost::asio::buffer(b.hash));
-			return true;
 		}
 
 		void get_block(size_t idx, const udp::endpoint& target) {
@@ -477,46 +511,6 @@ class Chain {
 			}
 		}
 
-		void check_for_miner() {
-			if (!miner_enable) return;
-			if (!chain_verified) return;
-			// if (get_now() < next_mine_check) return;
-
-			std::cout << "Waiting to read from Miner\n";
-			miner_sock.async_read_some(boost::asio::buffer(miner_buf), [this](const boost::system::error_code& err, size_t len) {
-				std::cout << "Read from miner!\n";
-				next_mine_check = get_now() + mine_check_time;
-				if (len == 0) {
-					std::cerr << "Empty Read\n";
-					check_for_miner();
-					return;
-				}
-				if (err) {
-					std::cerr << err.message() << "\n";
-					check_for_miner();
-					return;
-				}
-
-				string rec{miner_buf.data()};
-				rec = rec.substr(0, len);
-				std::cout << len << "\n";
-				std::cout << rec << "\n";
-				try {
-					json block = json::parse(rec);
-					block["height"] = chain.size();
-					Block new_block = block.template get<Block>();
-					bool added = add_block(new_block);
-
-					if (added) new_block_made = true;
-				} catch (std::exception& err) {
-					std::cerr << err.what() << "\n";
-				}
-
-				miner_sock.send(boost::asio::buffer(chain[chain.size() - 1].hash));
-				check_for_miner();
-			});
-		}
-
 		void handle_new_block() {
 			if (!new_block_made) return;
 			new_block_made = false;
@@ -559,6 +553,8 @@ class Chain {
 				}
 			}
 
+			size_t resent = 0;
+
 			// Re-send requests we haven't received responses to
 			for (auto& req : reqs) {
 				if (req.done) continue;
@@ -568,8 +564,12 @@ class Chain {
 					if (req.tries < max_tries) {
 						send(req.msg, req.target);
 						req.last_send = now;
+						++resent;
 					}
 				}
+
+				// Only send out 200 at a time
+				if (resent > 200) break;
 			}
 
 			std::erase_if(reqs, [](Request r) { return r.tries >= max_tries; });
@@ -627,12 +627,11 @@ class Chain {
 
 				if (!chain_verified && reqs.size() == 0) {
 					std::cout << "Verifying Chain!\n";
-					verify_chain();
-					// chain_verified = true;
-					if (miner_enable) {
-						miner_sock.send(boost::asio::buffer(chain[chain.size() - 1].hash));
-						next_mine_check = get_now() + mine_check_time;
-						check_for_miner();
+					// verify_chain();
+					chain_verified = true;
+					for (int i = 0; i < miners.size(); ++i) {
+						miners[i]->send(boost::asio::buffer(chain[chain.size() - 1].hash));
+						check_miner(i);
 					}
 				}
 			}
@@ -657,26 +656,29 @@ class Chain {
 		}
 
 	public:
-		Chain(bool miner_enable) : miner_enable{miner_enable} {
+		Chain(int num_miners) {
 			// my_host = boost::asio::ip::host_name();
 			// std::cout << "Our Address: " << my_host << "\n";
 			// udp::endpoint public_ep = *udp_res.resolve({udp::v4(), my_host, std::to_string(my_port)});
 			// my_host = public_ep.address().to_string();
 			std::cout << "Our Address: " << my_host << "\n";
 
-			if (miner_enable) {
-				tcp::acceptor acceptor{io_ctxt, tcp::endpoint{tcp::v4(), 50001}};
+			tcp::acceptor acceptor{io_ctxt, tcp::endpoint{tcp::v4(), 50001}};
+			for (int i = 0; i < num_miners; ++i) {
 				std::cout << "Waiting to connect to miner\n";
-				acceptor.accept(miner_sock);
+				tcp::socket* sock = new tcp::socket{io_ctxt};
+				acceptor.accept(*sock);
 
-				string to_miner = "Ayo bitch";
-				miner_sock.send(boost::asio::buffer(to_miner));
+				string to_miner = std::to_string(i);
+				sock->send(boost::asio::buffer(to_miner));
 				std::cout << "Sent to miner\n";
 				std::array<char, 1024> m_buf{};
-				size_t m_len = miner_sock.receive(boost::asio::buffer(m_buf));
+				size_t m_len = sock->receive(boost::asio::buffer(m_buf));
 				string m_resp{m_buf.data()};
 				m_resp = m_resp.substr(0, m_len);
 				std::cout << m_resp << "\n";
+				miners.push_back(sock);
+				miner_bufs.push_back({});
 			}
 
 			timeval timeout;
@@ -705,17 +707,24 @@ class Chain {
 				}
 			}
 		}
+
+		~Chain() {
+			for (int i = 0; i < miners.size(); ++i) {
+				delete miners[i];
+			}
+			miners.clear();
+		}
 };
 
 int main(int argc, char* argv[]) {
-	bool miner_enable = true;
+	int num_miners = 1;
 	if (argc > 1) {
-		miner_enable = (bool)std::atoi(argv[1]);
+		num_miners = std::atoi(argv[1]);
 	}
 
 	std::srand(std::time(nullptr));
 
-	Chain chain{miner_enable};
+	Chain chain{num_miners};
 
 	return 0;
 }

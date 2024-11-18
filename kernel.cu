@@ -218,7 +218,7 @@ void Finder::set_last_hash(const string last_hash) {
 	data->dev_ctx = &data->ctx;
 }
 
-void Finder::find_nonce(const std::function<void(void)> refresher) {
+void Finder::find_nonce(const std::function<void(void)> refresher, size_t idx) {
 	cudaEvent_t start, stop;
 	cudaEventCreate(&start);
 	cudaEventCreate(&stop);
@@ -229,7 +229,7 @@ void Finder::find_nonce(const std::function<void(void)> refresher) {
 	bool found = false;
 	dev_found = &found;
 	Managed<size_t> dev_loops{};
-	size_t loops = 0;
+	size_t loops = idx * 0xFFFFF; // Just so all the miners aren't checking the same things
 	while (found == false) {
 		dev_loops = &loops;
 		test_nonce<<<512, 512>>>(*(data->dev_ctx), *dev_loops, dev_golden, dev_found);
