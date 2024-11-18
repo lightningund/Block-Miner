@@ -126,7 +126,7 @@ void listener(tcp::socket& chain, Finder& finder, std::array<char, 64>& buf) {
 			return;
 		}
 		if (err) {
-			std::cerr << err.message() << "\n";
+			LOG_ERROR(err.message());
 			listener(chain, finder, buf);
 			return;
 		}
@@ -150,7 +150,7 @@ int main(int argc, char* argv[]) {
 	// test_hash();
 
 	if (argc < 2) {
-		std::cerr << "Please Give me a host idk what to do\n";
+		LOG_ERROR("Please Give me a host idk what to do");
 		return -1;
 	}
 

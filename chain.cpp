@@ -111,10 +111,10 @@ class UDP_Receiver {
 					rec.msg = resp.substr(0, len);
 				} else if (err == boost::asio::error::operation_aborted) {
 					// Timed out
-					std::cerr << "Receive Timed Out\n";
+					LOG_ERROR("Receive Timed Out");
 				} else {
-					std::cerr << "Error Of Some Kind\n";
-					std::cerr << err.message() << "\n";
+					LOG_ERROR("Error Of Some Kind");
+					LOG_ERROR(err.message());
 				}
 			});
 		}
@@ -202,7 +202,7 @@ class Chain {
 				udp::endpoint new_ep = *udp_res.resolve({udp::v4(), host, std::to_string(port)});
 				add_peer(new_ep);
 			} catch (const std::exception& e) {
-				std::cerr << e.what() << "\n";
+				LOG_ERROR(e.what());
 			}
 		}
 
@@ -232,7 +232,7 @@ class Chain {
 						std::cerr << err.what() << "\n";
 					}
 				} catch (std::exception& err) {
-					std::cerr << err.what() << "\n";
+					LOG_ERR(err.what());
 				}
 
 				miners[idx]->send(boost::asio::buffer(chain[chain.size() - 1].hash));
@@ -311,7 +311,7 @@ class Chain {
 					throw std::runtime_error{"Empty Chain"};
 				}
 			} catch (const std::exception& e) {
-				std::cerr << e.what() << "\n";
+				LOG_ERROR(e.what());
 				json reply = Block{};
 				reply["type"] = "GET_BLOCK_REPLY";
 				send(reply, target);
@@ -378,8 +378,8 @@ class Chain {
 						return true;
 					}
 				} catch(const std::exception& e) {
-					std::cerr << e.what() << "\n";
-					std::cout << "\n\n\nNOOOOOOO!! An error or exception or some kind of unexpected and unhandled circumstance!\n\n\n";
+					LOG_ERROR(e.what());
+					LOG_ERROR("\n\n\nNOOOOOOO!! An error or exception or some kind of unexpected and unhandled circumstance!\n\n\n");
 					chain.erase(chain.begin() + i, chain.end());
 					return true;
 				}
@@ -617,7 +617,7 @@ class Chain {
 						try {
 							chain[filled.response["height"]] = filled.response.template get<Block>();
 						} catch(const std::exception& e) {
-							std::cerr << e.what() << '\n';
+							LOG_ERROR(e.what());
 						}
 					}
 
@@ -703,7 +703,7 @@ class Chain {
 				try {
 					main_loop();
 				} catch(const std::exception& e) {
-					std::cerr << e.what() << "\n";
+					LOG_ERROR(e.what());
 				}
 			}
 		}
