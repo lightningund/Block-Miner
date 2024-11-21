@@ -151,7 +151,8 @@ class Chain {
 		bool in_consensus = false;
 		bool chain_verified = false;
 
-		std::vector<tcp::socket*> miners{};
+		std::unique_ptr<tcp::socket> next_miner{new tcp::socket{io_ctxt}};
+		std::vector<std::unique_ptr<tcp::socket>> miners{};
 		std::vector<std::array<char, 1024>> miner_bufs{};
 
 		std::vector<Block> chain{};
@@ -205,6 +206,24 @@ class Chain {
 			} catch (const std::exception& e) {
 				LOG_ERROR(e.what());
 			}
+		}
+
+		void check_for_miner_connection(tcp::acceptor& acceptor) {
+			acceptor.async_accept(next_miner, [this](const boost::system::error_code& err, tcp::socket peer) {
+				std::cout << "New miner connection\n";
+
+				string to_miner = std::to_string(i);
+				next_miner->send(boost::asio::buffer(to_miner));
+				std::cout << "Sent to miner\n";
+				std::array<char, 1024> m_buf{};
+				size_t m_len = next_miner->receive(boost::asio::buffer(m_buf));
+				string m_resp{m_buf.data()};
+				m_resp = m_resp.substr(0, m_len);
+				std::cout << m_resp << "\n";
+				miners.push_back(next_miner);
+				miner_bufs.push_back({});
+				next_miner = std::make_unique(io_ctxt);
+			});
 		}
 
 		void check_miner(size_t idx) {
@@ -462,10 +481,10 @@ class Chain {
 		// Create a brand new gossip and send it to the main server
 		void make_gossip() {
 			std::cout << "Generating Gossip\n";
-			Peer known = peers[0];
-			// udp::endpoint silicon = *udp_res.resolve({udp::v4(), known_host, "8999"});
+			// Peer known = peers[0];
+			udp::endpoint known = *udp_res.resolve({udp::v4(), known_host, "8999"});
 
-			std::cout << known.endpoint.address().to_string() << "\n";
+			std::cout << known.address().to_string() << "\n";
 
 			json goss = Gossip{};
 			goss["type"] = "GOSSIP";
@@ -634,8 +653,8 @@ class Chain {
 
 				if (!chain_verified && reqs.size() == 0) {
 					std::cout << "Verifying Chain!\n";
-					// verify_chain();
-					chain_verified = true;
+					verify_chain();
+					// chain_verified = true;
 					for (int i = 0; i < miners.size(); ++i) {
 						miners[i]->send(boost::asio::buffer(chain[chain.size() - 1].hash));
 						check_miner(i);
@@ -669,33 +688,26 @@ class Chain {
 			// udp::endpoint public_ep = *udp_res.resolve({udp::v4(), my_host, std::to_string(my_port)});
 			// my_host = public_ep.address().to_string();
 			std::cout << "Our Address: " << my_host << "\n";
+			std::cout << "Our Port: " << my_port << "\n";
 
 			tcp::acceptor acceptor{io_ctxt, tcp::endpoint{tcp::v4(), 50001}};
-			for (int i = 0; i < num_miners; ++i) {
-				std::cout << "Waiting to connect to miner\n";
-				tcp::socket* sock = new tcp::socket{io_ctxt};
-				acceptor.accept(*sock);
+			check_for_miner_connection(acceptor);
+			// for (int i = 0; i < num_miners; ++i) {
+			// 	std::cout << "Waiting to connect to miner\n";
+			// 	auto sock = std::make_unique<tcp::socket>(io_ctxt);
+			// 	acceptor.accept(*sock);
 
-				string to_miner = std::to_string(i);
-				sock->send(boost::asio::buffer(to_miner));
-				std::cout << "Sent to miner\n";
-				std::array<char, 1024> m_buf{};
-				size_t m_len = sock->receive(boost::asio::buffer(m_buf));
-				string m_resp{m_buf.data()};
-				m_resp = m_resp.substr(0, m_len);
-				std::cout << m_resp << "\n";
-				miners.push_back(sock);
-				miner_bufs.push_back({});
-			}
-
-			timeval timeout;
-			timeout.tv_usec = 0;
-			timeout.tv_sec = 2;
-			setsockopt(us_sock.native_handle(), SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout));
-			// setsockopt(miner.native_handle(), SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout));
-
-			std::cout << "Our Address: " << my_host << "\n";
-			std::cout << "Our Port: " << my_port << "\n";
+			// 	string to_miner = std::to_string(i);
+			// 	sock->send(boost::asio::buffer(to_miner));
+			// 	std::cout << "Sent to miner\n";
+			// 	std::array<char, 1024> m_buf{};
+			// 	size_t m_len = sock->receive(boost::asio::buffer(m_buf));
+			// 	string m_resp{m_buf.data()};
+			// 	m_resp = m_resp.substr(0, m_len);
+			// 	std::cout << m_resp << "\n";
+			// 	miners.push_back(sock);
+			// 	miner_bufs.push_back({});
+			// }
 
 			udp::endpoint silicon = *udp_res.resolve({udp::v4(), known_host, "8999"});
 			add_peer(silicon);
@@ -713,13 +725,6 @@ class Chain {
 					LOG_ERROR(e.what());
 				}
 			}
-		}
-
-		~Chain() {
-			for (int i = 0; i < miners.size(); ++i) {
-				delete miners[i];
-			}
-			miners.clear();
 		}
 };
 
