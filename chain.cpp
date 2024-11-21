@@ -142,6 +142,7 @@ class Chain {
 
 		timepoint next_self_check;
 		timepoint next_mine_check;
+		timepoint next_consensus;
 		timepoint last_gossip;
 
 		udp::resolver udp_res{io_ctxt};
@@ -402,6 +403,8 @@ class Chain {
 		// God this function does a lot of loops
 		void complete_consensus() {
 			std::cout << "Consensus Complete\n";
+
+			next_consensus = get_now() + consensus_time;
 			in_consensus = false;
 
 			size_t longest = 0;
@@ -423,7 +426,7 @@ class Chain {
 			reqs.clear();
 
 			// We still have the longest chain, so ignore the plebians
-			if (longest < chain.size()) return;
+			if (longest <= chain.size()) return;
 
 			chain = std::vector<Block>(longest);
 
@@ -535,6 +538,10 @@ class Chain {
 			handle_new_block();
 
 			// check_for_miner();
+
+			if (next_consensus < now) {
+				request_stats();
+			}
 
 			// Make sure to generate gossip if we haven't sent anything in a while
 			if (last_gossip + re_gossip_time < now) {

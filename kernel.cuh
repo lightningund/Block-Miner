@@ -18,6 +18,8 @@ class Finder {
 	public:
 		Finder(Block& block);
 		~Finder();
+		void find_nonce();
+		void find_nonce(size_t idx);
 		void find_nonce(const std::function<void(void)> refresher, size_t idx);
 		void set_last_hash(const string last_hash);
 		void set_block(Block& block);

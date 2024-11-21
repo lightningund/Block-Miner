@@ -4,7 +4,7 @@
 #include "kernel.cuh"
 #include "sha256.cuh"
 
-constexpr auto difficulty = 9;
+constexpr auto difficulty = 8;
 constexpr auto nonce_max = 16;
 
 // Wrapper for managed memory objects
@@ -43,7 +43,6 @@ std::ostream& operator<<(std::ostream& os, const std::array<BYTE, len>& data) {
 	return os;
 }
 
-__global__
 void hash_block(const BYTE* input, size_t inputlen, hash_t* hash) {
 	HashContext ctx{};
 	ctx.update(input, inputlen);
@@ -79,7 +78,7 @@ hash_t hash_block(const string& last_hash, const Block& block) {
 	Managed<BYTE> dev_input{input.size()};
 	dev_input = reinterpret_cast<const BYTE*>(input.c_str());
 	Managed<hash_t> dev_hash{};
-	hash_block<<<1, 1>>>(dev_input.raw, input.size(), dev_hash.raw);
+	hash_block(dev_input.raw, input.size(), dev_hash.raw);
 	cudaDeviceSynchronize();
 
 	hash_t hash;
@@ -216,6 +215,14 @@ void Finder::set_last_hash(const string last_hash) {
 
 	data->ctx.update(input.c_str(), input.size());
 	data->dev_ctx = &data->ctx;
+}
+
+void Finder::find_nonce() {
+	find_nonce([](){}, 0);
+}
+
+void Finder::find_nonce(size_t idx) {
+	find_nonce([](){}, idx);
 }
 
 void Finder::find_nonce(const std::function<void(void)> refresher, size_t idx) {

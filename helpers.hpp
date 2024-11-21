@@ -11,6 +11,7 @@ constexpr auto self_check_time = 1s;
 constexpr auto mine_check_time = 5min;
 constexpr auto peer_scan_time = 10s;
 constexpr auto max_tries = 10;
+constexpr auto consensus_time = 5min;
 
 timepoint get_now() {
 	return std::chrono::system_clock::now();
