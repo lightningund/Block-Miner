@@ -1,4 +1,4 @@
-CPPC := clang++
+CPPC := g++
 CPPFLAGS := -g -std=c++20 -Wall
 CUDAFLAGS := --expt-relaxed-constexpr -O2
 # CPPFLAGS := /std:c++20 /Wall /EHsc

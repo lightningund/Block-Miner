@@ -29,5 +29,3 @@ class Finder {
 };
 
 hash_t hash_block(const string& last_hash, const Block& block);
-
-void find_nonce(const string& last_hash, Block& block);
