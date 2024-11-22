@@ -81,7 +81,7 @@ string hash_to_string(const hash_t& hash) {
 __global__
 void test_nonce(
 	HashContext ctx,
-	size_t offset,
+	const size_t offset,
 	size_t* golden,
 	bool* found
 ) {
