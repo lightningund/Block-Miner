@@ -155,6 +155,9 @@ class Chain {
 		std::vector<tcp::socket*> miners{};
 		std::vector<std::array<char, 1024>> miner_bufs{};
 
+		std::array<char, 1024> recv_buf{};
+		Receipt recv_receipt;
+
 		std::vector<Block> chain{};
 		bool new_block_made = false;
 
@@ -498,6 +501,7 @@ class Chain {
 		}
 
 		void request_stats() {
+			next_consensus = get_now() + consensus_time;
 			string msg = "{\"type\": \"STATS\"}";
 			in_consensus = true;
 			for (auto&& peer : peers) {
@@ -606,82 +610,94 @@ class Chain {
 			std::cout << "Self Check Complete\n";
 		}
 
-		void main_loop() {
-			std::cout << "New Loop!\n";
+		void main_recv() {
+			us_sock.async_receive_from(boost::asio::buffer(recv_buf), recv_receipt.sender, [this](boost::system::error_code err, size_t len) {
+				try {
+					if (len == 0) throw std::runtime_error("Empty Read");
+					if (err) throw std::runtime_error(err.message());
 
-			if (io_ctxt.stopped()) {
-				std::cout << "IO Was Stopped!\n";
-				io_ctxt.restart();
-				std::cout << "IO Restarted!\n";
-			}
-			std::cout << "Trying to poll IO\n";
-			io_ctxt.poll();
-			std::cout << "IO Polled\n";
+					std::cout << "Read something!\n";
 
-			self_check();
+					recv_receipt.received = get_now();
+					string resp{recv_buf.data()};
+					recv_receipt.msg = resp.substr(0, len);
 
-			std::cout << "Trying to read\n";
-			UDP_Receiver<1024> recvr{us_sock};
-			Receipt rec = recvr.recv_from(5s);
-			if (rec.msg.size() == 0) throw std::runtime_error{"Empty Message"};
+					add_peer(recv_receipt.sender);
 
-			add_peer(rec.sender);
+					std::cout << recv_receipt.msg.size() << " " << recv_receipt.msg << "\n";
 
-			std::cout << rec.msg.size() << " " << rec.msg << "\n";
+					json incoming = json::parse(recv_receipt.msg);
 
-			json incoming = json::parse(rec.msg);
+					Request filled = check_requests(incoming, recv_receipt.sender);
+					if (in_consensus) {
+						size_t num_filled = count_requests();
 
-			Request filled = check_requests(incoming, rec.sender);
-			if (in_consensus) {
-				size_t num_filled = count_requests();
+						std::cout << num_filled << "/" << reqs.size() << " Requests Filled\n";
+						if (num_filled == reqs.size()) {
+							complete_consensus();
+						}
+					} else {
+						if (filled.done) { // since check_requests returns an empty request if none were filled, done will be false
+							std::cout << reqs.size() << " Requests Left\n";
+							if (filled.response_type == "GET_BLOCK_REPLY" || filled.response_type == "ANNOUNCE") {
+								try {
+									chain[filled.response["height"]] = filled.response.template get<Block>();
+								} catch(const std::exception& e) {
+									LOG_ERROR(e.what());
+								}
+							}
 
-				std::cout << num_filled << "/" << reqs.size() << " Requests Filled\n";
-				if (num_filled == reqs.size()) {
-					complete_consensus();
-				}
-			} else {
-				if (filled.done) { // since check_requests returns an empty request if none were filled, done will be false
-					std::cout << reqs.size() << " Requests Left\n";
-					if (filled.response_type == "GET_BLOCK_REPLY" || filled.response_type == "ANNOUNCE") {
-						try {
-							chain[filled.response["height"]] = filled.response.template get<Block>();
-						} catch(const std::exception& e) {
-							LOG_ERROR(e.what());
+							// Clear out completed reqs
+							std::erase_if(reqs, [](Request r) { return r.done; });
+						}
+
+						if (!chain_verified && reqs.size() == 0) {
+							std::cout << "Verifying Chain!\n";
+							verify_chain();
+							// chain_verified = true;
+							for (int i = 0; i < miners.size(); ++i) {
+								miners[i]->send(boost::asio::buffer(chain[chain.size() - 1].hash));
+								check_miner(i);
+							}
 						}
 					}
 
-					// Clear out completed reqs
-					std::erase_if(reqs, [](Request r) { return r.done; });
-				}
-
-				if (!chain_verified && reqs.size() == 0) {
-					std::cout << "Verifying Chain!\n";
-					verify_chain();
-					// chain_verified = true;
-					for (int i = 0; i < miners.size(); ++i) {
-						miners[i]->send(boost::asio::buffer(chain[chain.size() - 1].hash));
-						check_miner(i);
+					if (incoming["type"] == "GOSSIP") {
+						process_gossip(incoming.template get<Gossip>());
+					} else if (incoming["type"] == "GOSSIP_REPLY") {
+						add_peer(incoming["host"], incoming["port"]);
+					} else if (incoming["type"] == "STATS") {
+						std::cout << "OOOO Sending stats\n";
+						send_stats(recv_receipt.sender);
+					}else if (incoming["type"] == "ANNOUNCE") {
+						add_block(incoming.template get<Block>());
+					} else if (incoming["type"] == "GET_BLOCK") {
+						get_block(incoming["height"], recv_receipt.sender);
+					} else if (incoming["type"] == "CONSENSUS") {
+						if (in_consensus) return;
+						request_stats();
 					}
+				} catch(std::exception e) {
+					LOG_ERROR(e.what());
 				}
-			}
 
-			if (incoming["type"] == "GOSSIP") {
-				process_gossip(incoming.template get<Gossip>());
-			} else if (incoming["type"] == "GOSSIP_REPLY") {
-				add_peer(incoming["host"], incoming["port"]);
-			} else if (incoming["type"] == "STATS") {
-				std::cout << "OOOO Sending stats\n";
-				send_stats(rec.sender);
-			} else if (incoming["type"] == "STATS_REPLY") {
-				// Update our own stats
-			} else if (incoming["type"] == "ANNOUNCE") {
-				add_block(incoming.template get<Block>());
-			} else if (incoming["type"] == "GET_BLOCK") {
-				get_block(incoming["height"], rec.sender);
-			} else if (incoming["type"] == "CONSENSUS") {
-				if (in_consensus) return;
-				request_stats();
+				main_recv();
+			});
+		}
+
+		void main_loop() {
+			// std::cout << "New Loop!\n";
+
+			if (io_ctxt.stopped()) {
+				// std::cout << "IO Was Stopped!\n";
+				io_ctxt.restart();
+				// std::cout << "IO Restarted!\n";
 			}
+			// std::cout << "Trying to poll IO\n";
+			io_ctxt.poll();
+			// std::cout << "IO Polled\n";
+
+			self_check();
 		}
 
 	public:
@@ -720,6 +736,7 @@ class Chain {
 
 			collect_peers();
 			request_stats();
+			main_recv();
 
 			while (true) {
 				try {
