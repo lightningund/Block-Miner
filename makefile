@@ -10,6 +10,7 @@ CUDAOBJS := $(CUDASRCS:.cu=.o)
 
 all: chain.o csha256.o
 	$(CPPC) $^ -o chain.out $(CPPFLAGS)
+
 # $(CPPC) $^ /Fo: chain.exe $(CPPFLAGS)
 
 miner: miner.o kernel.o sha256.o csha256.o
@@ -20,6 +21,7 @@ profiler: profile_miner.o kernel.o sha256.o
 
 $(CPPOBJS): %.o: %.cpp
 	$(CPPC) $^ -o $@ -c $(CPPFLAGS)
+
 # $(CPPC) $^ /Fo: $@ /c $(CPPFLAGS)
 
 $(CUDAOBJS): %.o: %.cu
