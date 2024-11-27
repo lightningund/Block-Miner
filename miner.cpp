@@ -102,7 +102,9 @@ void test_hash() {
 
 	std::cout << "\n" << test_block.hash << "\n";
 
-	find_nonce("", test_block);
+	Finder f{test_block};
+	f.set_last_hash("");
+	f.find_nonce();
 
 	host_hash_block("", test_block);
 }
@@ -147,7 +149,7 @@ void listener(tcp::socket& chain, Finder& finder, std::array<char, 64>& buf) {
 }
 
 int main(int argc, char* argv[]) {
-	// test_hash();
+	test_hash();
 
 	if (argc < 2) {
 		LOG_ERROR("Please Give me a host idk what to do");
@@ -242,7 +244,7 @@ int main(int argc, char* argv[]) {
 			<< "ms\nTotal running time: " << duration_cast<milliseconds>(runtime).count()
 			<< "ms\nEfficiency: " << ((float)total_time.count() / runtime.count()) * 100 << "%\n";
 		json block = curr_block;
-		std::cout << block << "\n";
+		// std::cout << block << "\n";
 		std::cout << "Sending block to chain\n";
 		chain.send(boost::asio::buffer(block.dump()));
 		last_hash = curr_block.hash;
