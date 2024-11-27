@@ -211,12 +211,12 @@ int main(int argc, char* argv[]) {
 
 	const auto refresher = []() {
 		if (io_ctxt.stopped()) {
-			std::cout << "IO Was Stopped!\n";
+			// std::cout << "IO Was Stopped!\n";
 			io_ctxt.restart();
-			std::cout << "IO Restarted!\n";
+			// std::cout << "IO Restarted!\n";
 		}
 		io_ctxt.poll();
-		std::cout << "IO Polled";
+		// std::cout << "IO Polled";
 	};
 
 	while (true) {
@@ -245,16 +245,16 @@ int main(int argc, char* argv[]) {
 			<< "ms\nEfficiency: " << ((float)total_time.count() / runtime.count()) * 100 << "%\n";
 		json block = curr_block;
 		// std::cout << block << "\n";
-		std::cout << "Sending block to chain\n";
+		// std::cout << "Sending block to chain\n";
 		chain.send(boost::asio::buffer(block.dump()));
 		last_hash = curr_block.hash;
 		// Block until we read something
-		std::cout << "Waiting until we get something back\n";
+		// std::cout << "Waiting until we get something back\n";
 		len = chain.read_some(boost::asio::buffer(buf), err);
-		std::cout << len << "\n";
+		// std::cout << len << "\n";
 		last_hash = string{buf.data()};
 		last_hash = last_hash.substr(0, len);
-		std::cout << last_hash << "\n";
+		// std::cout << last_hash << "\n";
 	}
 
 	return 0;

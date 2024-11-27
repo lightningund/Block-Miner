@@ -151,7 +151,6 @@ class Chain {
 		bool in_consensus = false;
 		bool chain_verified = false;
 
-		tcp::socket* next_miner;
 		std::vector<tcp::socket*> miners{};
 		std::vector<std::array<char, 1024>> miner_bufs{};
 
@@ -239,12 +238,8 @@ class Chain {
 			miners[idx]->async_read_some(boost::asio::buffer(miner_bufs[idx]), [this, idx](const boost::system::error_code& err, size_t len) {
 				std::cout << "Read from miner!\n";
 				try {
-					if (len == 0) {
-						throw std::runtime_error{"Empty Read"};
-					}
-					if (err) {
-						throw err;
-					}
+					if (len == 0) throw std::runtime_error{"Empty Read"};
+					if (err) throw err;
 
 					string rec{miner_bufs[idx].data()};
 					rec = rec.substr(0, len);
@@ -585,12 +580,6 @@ class Chain {
 
 			handle_new_block();
 
-			// check_for_miner();
-
-			// if (next_consensus < now) {
-			// 	request_stats();
-			// }
-
 			// Make sure to generate gossip if we haven't sent anything in a while
 			if (last_gossip + re_gossip_time < now) {
 				make_gossip();
@@ -608,8 +597,6 @@ class Chain {
 				}
 			}
 
-			size_t resent = 0;
-
 			// Re-send requests we haven't received responses to
 			for (auto& req : reqs) {
 				if (req.done) continue;
@@ -619,12 +606,8 @@ class Chain {
 					if (req.tries < max_tries) {
 						send(req.msg, req.target);
 						req.last_send = now;
-						++resent;
 					}
 				}
-
-				// Only send out 200 at a time
-				if (resent > 200) break;
 			}
 
 			std::erase_if(reqs, [](Request r) { return r.tries >= max_tries; });
