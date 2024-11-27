@@ -4,13 +4,13 @@
 #define LOG_ERR(msg) std::cerr << (msg) << ": " << errno << "\n"
 
 constexpr auto peers_to_repeat_to = 3;
-constexpr auto msg_dead_time = 10s;
+constexpr auto msg_dead_time = 2s;
 constexpr auto peer_dead_time = 1min;
 constexpr auto re_gossip_time = 30s;
 constexpr auto self_check_time = 1s;
 constexpr auto mine_check_time = 5min;
 constexpr auto peer_scan_time = 10s;
-constexpr auto max_tries = 50;
+constexpr auto max_tries = 20;
 constexpr auto consensus_time = 5min;
 
 timepoint get_now() {

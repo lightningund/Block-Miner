@@ -161,6 +161,9 @@ class Chain {
 		std::vector<Block> chain{};
 		bool new_block_made = false;
 
+		std::vector<Peer> agree_peers{};
+		std::vector<udp::endpoint> wrong_peers{};
+
 		bool add_block(Block b) {
 			if (b.height != chain.size()) return false;
 			if (chain_verified && hash_block(chain[chain.size() - 1].hash, b) != b.hash) return false;
@@ -380,7 +383,20 @@ class Chain {
 			return completed;
 		}
 
-		bool verify_chain() {
+		// Called when we find an erroneous block while verifying
+		void LIES() {
+			chain_verified = false;
+			chain.clear();
+			// Say that everyone who suggested this chain was a dirty liar
+			for (auto& peer : agree_peers) {
+				wrong_peers.push_back(peer.endpoint);
+			}
+			agree_peers.clear();
+			reqs.clear();
+			request_stats();
+		}
+
+		void verify_chain() {
 			chain_verified = true;
 
 			string last_hash = "";
@@ -388,36 +404,33 @@ class Chain {
 			for (int i = 0; i < chain.size(); ++i) {
 				std::cout << i << "\n";
 				try {
-					if (chain.at(i).messages.size() == 0) {
-						std::cerr << "\n\n\nBlock Missing\n\n\n";
-						chain.erase(chain.begin() + i, chain.end());
-						return true;
-					}
+					if (chain.at(i).messages.size() == 0) throw std::runtime_error("Block Missing");
 
 					Block block = chain[i];
 
 					string hash = hash_block(last_hash, block);
 					last_hash = block.hash;
-					if (hash != block.hash) {
-						std::cout << "\n\n\nNOOOOOOO!! hash mismatch!!!!\n\n\n";
-						chain.erase(chain.begin() + i, chain.end());
-						return true;
-					}
+					if (hash != block.hash) throw std::runtime_error("Wrong Hash");
 				} catch(const std::exception& e) {
 					LOG_ERROR(e.what());
 					LOG_ERROR("\n\n\nNOOOOOOO!! An error or exception or some kind of unexpected and unhandled circumstance!\n\n\n");
-					chain.erase(chain.begin() + i, chain.end());
-					return true;
+					LIES();
 				}
 			}
 
-			return true;
+			if (!in_consensus) {
+				Block b = chain[chain.size() - 1];
+				for (int i = 0; i < miners.size(); ++i) {
+					miners[i]->send(boost::asio::buffer(b.hash));
+					check_miner(i);
+				}
+			}
 		}
 
 		void get_blocks(size_t len, std::vector<Peer> agreers) {
 			// udp::endpoint silicon = *udp_res.resolve({udp::v4(), known_host, "8999"});
 
-			for (size_t i = 0; i < len; ++i) {
+			for (long i = len - 1; i >= 0; --i) {
 				// reqs.push_back(make_request(silicon, "{\"type\":\"GET_BLOCK\",\"height\":" + std::to_string(i) + "}", "GET_BLOCK_REPLY"));
 				for (auto& peer : agreers) {
 					reqs.push_back(make_request(peer.endpoint, "{\"type\":\"GET_BLOCK\",\"height\":" + std::to_string(i) + "}", "GET_BLOCK_REPLY"));
@@ -476,12 +489,11 @@ class Chain {
 				}
 			}
 
-			std::vector<Peer> agreers;
-			std::copy_if(peers.begin(), peers.end(), std::back_inserter(agreers), [longest, hash](Peer p) {
+			std::copy_if(peers.begin(), peers.end(), std::back_inserter(agree_peers), [longest, hash](Peer p) {
 				return (p.local_height == longest && p.local_hash == hash);
 			});
 
-			get_blocks(longest, agreers);
+			get_blocks(longest, agree_peers);
 		}
 
 		// Create a brand new gossip and send it to the main server
@@ -505,6 +517,16 @@ class Chain {
 			string msg = "{\"type\": \"STATS\"}";
 			in_consensus = true;
 			for (auto&& peer : peers) {
+				bool wrong = false;
+				for (auto& bl_peer : wrong_peers) {
+					if (same_ep(bl_peer, peer.endpoint)) {
+						wrong = true;
+						break;
+					}
+				}
+
+				if (wrong) continue;
+
 				reqs.push_back(make_request(peer.endpoint, msg, "STATS_REPLY"));
 			}
 
@@ -565,9 +587,9 @@ class Chain {
 
 			// check_for_miner();
 
-			if (next_consensus < now) {
-				request_stats();
-			}
+			// if (next_consensus < now) {
+			// 	request_stats();
+			// }
 
 			// Make sure to generate gossip if we haven't sent anything in a while
 			if (last_gossip + re_gossip_time < now) {
@@ -607,6 +629,11 @@ class Chain {
 
 			std::erase_if(reqs, [](Request r) { return r.tries >= max_tries; });
 
+			if (!chain_verified && reqs.size() == 0) {
+				std::cout << "Verifying Chain!\n";
+				verify_chain();
+			}
+
 			std::cout << "Self Check Complete\n";
 		}
 
@@ -641,7 +668,15 @@ class Chain {
 							std::cout << reqs.size() << " Requests Left\n";
 							if (filled.response_type == "GET_BLOCK_REPLY" || filled.response_type == "ANNOUNCE") {
 								try {
-									chain[filled.response["height"]] = filled.response.template get<Block>();
+									Block b = filled.response.template get<Block>();
+									// Make sure that at least the reported hash makes sense
+									// TODO:
+									//		Add more checks
+									//		Have this scale with difficulty
+									if (!b.hash.ends_with("00000000")) LIES();
+									else {
+										chain[filled.response["height"]] = filled.response.template get<Block>();
+									}
 								} catch(const std::exception& e) {
 									LOG_ERROR(e.what());
 								}
@@ -649,16 +684,6 @@ class Chain {
 
 							// Clear out completed reqs
 							std::erase_if(reqs, [](Request r) { return r.done; });
-						}
-
-						if (!chain_verified && reqs.size() == 0) {
-							std::cout << "Verifying Chain!\n";
-							verify_chain();
-							// chain_verified = true;
-							for (int i = 0; i < miners.size(); ++i) {
-								miners[i]->send(boost::asio::buffer(chain[chain.size() - 1].hash));
-								check_miner(i);
-							}
 						}
 					}
 
