@@ -1,3 +1,7 @@
+// BREAK IN CASE OF WRONG CHAIN:
+// echo '{"type":"CONSENSUS"}' | nc -u 127.0.0.1 8470
+// (From the ember server itself)
+
 #include <unistd.h>
 #include <cstdlib>
 #include <ctime>
