@@ -155,7 +155,7 @@ void Finder::find_nonce(const std::function<void(void)> refresher, size_t idx) {
 	cudaEventRecord(start);
 	while (found == false) {
 		dev_loops = &loops;
-		test_nonce<<<512, 512>>>(*(data->dev_ctx), *dev_loops, dev_golden, dev_found);
+		test_nonce<<<1024, 1024>>>(*(data->dev_ctx), *dev_loops, dev_golden, dev_found);
 		++loops;
 		cudaMemcpy(&found, dev_found, sizeof(bool), cudaMemcpyDeviceToHost);
 		cudaDeviceSynchronize();

@@ -10,7 +10,7 @@ struct Block {
 	string minedBy;
 	std::vector<string> messages; // Each message is <=20 characters, max 10 messages
 	string nonce; // Must be under 40 characters
-	size_t height;
+	long height = -1;
 	size_t timestamp;
 	string hash;
 };

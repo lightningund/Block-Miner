@@ -347,9 +347,10 @@ class Chain {
 			for (int i = 0; i < chain.size(); ++i) {
 				std::cout << i << "\n";
 				try {
-					if (chain.at(i).messages.size() == 0) throw std::runtime_error("Block Missing");
-
-					Block block = chain[i];
+					Block block = chain.at(i);
+					json bl = block;
+					std::cout << bl << "\n";
+					if (block.height == -1) throw std::runtime_error("Block Missing");
 
 					string hash = hash_block(last_hash, block);
 					last_hash = block.hash;
@@ -380,10 +381,7 @@ class Chain {
 
 		// God this function does a lot of loops
 		void complete_consensus() {
-			std::cout << "Consensus Complete\n";
-
-			next_consensus = get_now() + consensus_time;
-			in_consensus = false;
+			std::cout << "Completing Consensus\n";
 
 			size_t longest = 0;
 
@@ -392,14 +390,29 @@ class Chain {
 				std::cout << req.response << "\n";
 				for (auto& peer : peers) {
 					if (same_ep(peer.endpoint, req.target)) {
-						peer.local_hash = req.response["hash"];
-						peer.local_height = req.response["height"];
-						continue;
+						try {
+							peer.local_hash = req.response["hash"];
+							peer.local_height = req.response["height"];
+							// TODO
+							// Add more checks
+							// Make this scale with difficulty
+							// Make this a function we can just call
+							if (!peer.local_hash.ends_with("00000000")) {
+								wrong_peers.push_back(peer.endpoint);
+								req.response["height"] = 0;
+							}
+						} catch (const std::exception& err) {
+							LOG_ERROR(err.what());
+						}
+						break;
 					}
 				}
 
 				longest = std::max(longest, req.response["height"].template get<size_t>());
 			}
+
+			next_consensus = get_now() + consensus_time;
+			in_consensus = false;
 
 			reqs.clear();
 
@@ -432,6 +445,8 @@ class Chain {
 			std::copy_if(peers.begin(), peers.end(), std::back_inserter(agree_peers), [longest, hash](Peer p) {
 				return (p.local_height == longest && p.local_hash == hash);
 			});
+
+			workers.announce_hash(hash);
 
 			get_blocks(longest, agree_peers);
 		}
@@ -520,8 +535,10 @@ class Chain {
 			if (now < next_self_check) return;
 			next_self_check = now + self_check_time;
 
+			size_t filled_reqs = count_requests();
 			std::cout << "Performing self check\n";
-			std::cout << "Num Requests: " << reqs.size() << "\n";
+			std::cout << "Performing Consensus: " << (in_consensus ? "Yes\n" : "No\n");
+			std::cout << "Requests: " << filled_reqs << "/" << reqs.size() << "\n";
 
 			handle_new_block();
 
@@ -542,24 +559,40 @@ class Chain {
 				}
 			}
 
+			size_t sent = 0;
+
 			// Re-send requests we haven't received responses to
-			for (auto& req : reqs) {
+			for (size_t i = 0; i < reqs.size(); ++i) {
+				auto& req = reqs[i];
 				if (req.done) continue;
 				if (req.last_send + msg_dead_time < now) {
 					++req.tries;
-					std::cout << "Resending message " << req.msg << " to " << req.target.address().to_string() << ". Try #" << req.tries << "\n";
+					// std::cout << "Resending message " << req.msg << " to " << req.target.address().to_string() << ". Try #" << req.tries << "\n";
 					if (req.tries < max_tries) {
 						send(req.msg, req.target);
 						req.last_send = now;
+						++sent;
 					}
+				}
+
+				if (sent > max_resend) {
+					// Move all the requests we went through to the end to make sure we see new ones
+					std::rotate(reqs.begin(), reqs.begin() + i, reqs.end());
+					break;
 				}
 			}
 
 			std::erase_if(reqs, [](Request r) { return r.tries >= max_tries; });
 
-			if (!chain_verified && reqs.size() == 0) {
-				std::cout << "Verifying Chain!\n";
-				verify_chain();
+			if (in_consensus) {
+				if (filled_reqs == reqs.size()) {
+					complete_consensus();
+				}
+			} else {
+				if (!chain_verified && reqs.size() == 0) {
+					std::cout << "Verifying Chain!\n";
+					verify_chain();
+				}
 			}
 
 			std::cout << "Self Check Complete\n";
@@ -571,7 +604,7 @@ class Chain {
 					if (len == 0) throw std::runtime_error("Empty Read");
 					if (err) throw std::runtime_error(err.message());
 
-					std::cout << "Read something!\n";
+					// std::cout << "Read something!\n";
 
 					recv_receipt.received = get_now();
 					string resp{recv_buf.data()};
@@ -579,7 +612,7 @@ class Chain {
 
 					add_peer(recv_receipt.sender);
 
-					std::cout << recv_receipt.msg.size() << " " << recv_receipt.msg << "\n";
+					// std::cout << recv_receipt.msg.size() << " " << recv_receipt.msg << "\n";
 
 					json incoming = json::parse(recv_receipt.msg);
 
@@ -588,12 +621,9 @@ class Chain {
 						size_t num_filled = count_requests();
 
 						std::cout << num_filled << "/" << reqs.size() << " Requests Filled\n";
-						if (num_filled == reqs.size()) {
-							complete_consensus();
-						}
 					} else {
 						if (filled.done) { // since check_requests returns an empty request if none were filled, done will be false
-							std::cout << reqs.size() << " Requests Left\n";
+							// std::cout << reqs.size() << " Requests Left\n";
 							if (filled.response_type == "GET_BLOCK_REPLY" || filled.response_type == "ANNOUNCE") {
 								try {
 									Block b = filled.response.template get<Block>();
@@ -603,7 +633,7 @@ class Chain {
 									//		Have this scale with difficulty
 									if (!b.hash.ends_with("00000000")) LIES();
 									else {
-										chain[filled.response["height"]] = filled.response.template get<Block>();
+										chain[b.height] = b;
 									}
 								} catch(const std::exception& e) {
 									LOG_ERROR(e.what());
