@@ -30,9 +30,9 @@ using boost::asio::ip::tcp;
 #include "sweatshop.hpp"
 
 #ifdef COMP_CHAIN
-constexpr auto known_host = "192.168.102.146";
+std::vector<std::pair<string, string>> known_hosts{{"192.168.102.145", "8999"}, {"192.168.102.146", "8999"}, {"192.168.102.145", "8997"}, {"192.168.102.146", "8997"}};
 #else
-constexpr auto known_host = "silicon.cs.umanitoba.ca";
+std::vector<std::pair<string, string>> known_hosts{{"silicon.cs.umanitoba.ca", "8999"}, {"eagle.cs.umanitoba.ca", "8999"}, {"grebe.cs.umanitoba.ca", "8999"}, {"hawk.cs.umanitoba.ca", "8999"}};
 #endif
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Block, minedBy, messages, nonce, height, hash, timestamp)
@@ -246,8 +246,6 @@ class Chain {
 		void process_gossip(const Gossip& incoming) {
 			if (sent_gossips.contains(incoming.id)) return;
 
-			last_gossip = get_now();
-
 			udp::endpoint target = *udp_res.resolve({udp::v4(), incoming.host, std::to_string(incoming.port)});
 			GossipReply reply{my_host, my_port, my_name};
 			json reply_json = reply;
@@ -264,11 +262,13 @@ class Chain {
 				send(goss_json, peers[idx].endpoint);
 			}
 
+			last_gossip = get_now();
+
 			sent_gossips.insert(incoming.id);
 		}
 
 		void send_stats(const udp::endpoint& target) {
-			if (chain.size() > 0 && chain.at(chain.size() - 1).height) {
+			if (chain.size() > 0) {
 				json reply;
 				reply["height"] = chain.size();
 				reply["hash"] = chain[chain.size() - 1].hash;
@@ -379,6 +379,7 @@ class Chain {
 		}
 
 		void get_blocks(size_t len, std::vector<Peer> agreers) {
+			next_chain_check = get_now() + chain_check_time;
 			// udp::endpoint silicon = *udp_res.resolve({udp::v4(), known_host, "8999"});
 
 			for (long i = len - 1; i >= 0; --i) {
@@ -391,6 +392,7 @@ class Chain {
 
 		// Go through the chain and make a request for all the blocks we are missing
 		void check_chain() {
+			if (chain.size() == 0) return;
 			timepoint now = get_now();
 			if (now < next_chain_check) return;
 
@@ -483,15 +485,15 @@ class Chain {
 		// Create a brand new gossip and send it to the main server
 		void make_gossip() {
 			std::cout << "Generating Gossip\n";
-			// Peer known = peers[0];
-			udp::endpoint known = *udp_res.resolve({udp::v4(), known_host, "8999"});
-
-			std::cout << known.address().to_string() << "\n";
-
 			json goss = Gossip{};
 			goss["type"] = "GOSSIP";
-			send(goss, known);
 			sent_gossips.insert(goss["id"]);
+			for (auto p : peers) {
+				std::cout << p.endpoint.address().to_string() << "\n";
+				send(goss, p);
+			}
+
+			last_gossip = get_now();
 
 			std::cout << "Sent Gossip\n";
 		}
@@ -537,7 +539,7 @@ class Chain {
 
 		// Just requests the first num blocks from the known peer and verifies them
 		void demo_get_chain(size_t num) {
-			udp::endpoint silicon = *udp_res.resolve({udp::v4(), known_host, "8999"});
+			udp::endpoint silicon = *udp_res.resolve({udp::v4(), known_hosts[0].first, known_hosts[0].second});
 
 			chain = std::vector<Block>(num);
 
@@ -583,7 +585,7 @@ class Chain {
 			}
 
 			// Remove peers we haven't heard from
-			for (size_t i = 0; i < peers.size(); ++i) {
+			for (size_t i = known_hosts.size(); i < peers.size(); ++i) {
 				if (peers[i].last_msg + peer_dead_time < now) {
 					std::erase_if(reqs, [i, this](Request r) {
 						return same_ep(peers[i].endpoint, r.target);
@@ -629,8 +631,6 @@ class Chain {
 					verify_chain();
 				}
 			}
-
-			std::cout << "Self Check Complete\n";
 		}
 
 		void main_recv() {
@@ -748,15 +748,18 @@ class Chain {
 			std::cout << "Our Address: " << my_host << "\n";
 			std::cout << "Our Port: " << my_port << "\n";
 
-			udp::endpoint silicon = *udp_res.resolve({udp::v4(), known_host, "8999"});
-			add_peer(silicon);
+			for (auto host : known_hosts) {
+				udp::endpoint ep = *udp_res.resolve({udp::v4(), host.first, host.second});
+				add_peer(ep);
+			}
+
 			make_gossip();
 
 			// demo_get_chain(100);
 
-			// #ifndef COMP_CHAIN
+			#ifndef COMP_CHAIN
 			collect_peers();
-			// #endif
+			#endif
 			request_stats();
 			main_recv();
 

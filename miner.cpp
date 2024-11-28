@@ -136,7 +136,7 @@ void listener(tcp::socket& chain, Finder& finder, std::array<char, 64>& buf) {
 		string hash{buf.data()};
 		hash = hash.substr(0, len);
 
-		std::cout << "Read new hash! " << hash << "\n";
+		std::cout << "\rRead new hash! " << hash;
 
 		finder.set_last_hash(hash);
 		listener(chain, finder, buf);
@@ -232,7 +232,7 @@ int main(int argc, char* argv[]) {
 		min_time = std::min(dur, min_time);
 		total_time += dur;
 		auto runtime = get_now() - very_start;
-		std::cout << "Average block time: " << duration_cast<milliseconds>(total_time / num_blocks).count()
+		std::cout << "\nAverage block time: " << duration_cast<milliseconds>(total_time / num_blocks).count()
 			<< "ms\nMax block time: " << duration_cast<milliseconds>(max_time).count()
 			<< "ms\nMin block time: " << duration_cast<milliseconds>(min_time).count()
 			<< "ms\nTotal blocks: " << num_blocks
