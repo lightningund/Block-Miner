@@ -4,7 +4,7 @@
 #include "kernel.cuh"
 #include "sha256.cuh"
 
-constexpr auto difficulty = 8;
+constexpr auto difficulty = 9;
 constexpr auto nonce_max = 16;
 
 // Wrapper for managed memory objects
@@ -155,7 +155,7 @@ void Finder::find_nonce(const std::function<void(void)> refresher, size_t idx) {
 	cudaEventRecord(start);
 	while (found == false) {
 		dev_loops = &loops;
-		test_nonce<<<1024, 1024>>>(*(data->dev_ctx), *dev_loops, dev_golden, dev_found);
+		test_nonce<<<1024, 512>>>(*(data->dev_ctx), *dev_loops, dev_golden, dev_found);
 		++loops;
 		cudaMemcpy(&found, dev_found, sizeof(bool), cudaMemcpyDeviceToHost);
 		cudaDeviceSynchronize();
@@ -168,6 +168,7 @@ void Finder::find_nonce(const std::function<void(void)> refresher, size_t idx) {
 	cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     float time;
+	std::cout << std::dec;
     cudaEventElapsedTime(&time, start, stop);
 	std::cout << "Finding the nonce took: " << time << " ms\n";
 	printf("Loops: %lu\n", loops);
@@ -182,13 +183,13 @@ void Finder::find_nonce(const std::function<void(void)> refresher, size_t idx) {
 		golden >>= 4;
 	}
 
-	std::cout << nonce << "\n";
-	std::cout << std::dec << nonce.size() << "\n";
+	// std::cout << nonce << "\n";
+	// std::cout << std::dec << nonce.size() << "\n";
 
 	data->curr.nonce = std::string{reinterpret_cast<char*>(nonce.data())};
 	data->curr.nonce = data->curr.nonce.substr(0, nonce_max);
 	std::cout << data->curr.nonce << "\n";
-	std::cout << std::dec << data->curr.nonce.size() << "\n";
+	// std::cout << std::dec << data->curr.nonce.size() << "\n";
 	hash_t hash = hash_block(data->last_hash, data->curr);
 	data->curr.hash = hash_to_string(hash);
 }

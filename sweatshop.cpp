@@ -24,6 +24,7 @@ void Sweatshop::check_for_volunteers() {
 
 			if (working) {
 				next_miner->send(boost::asio::buffer(last_hash));
+				listen_for_gold(miners.size() - 1);
 			}
 		} catch (const std::exception& e) {
 			LOG_ERROR("Miner Accept");
@@ -38,7 +39,7 @@ void Sweatshop::check_for_volunteers() {
 
 void Sweatshop::listen_for_gold(size_t idx) {
 	miners[idx]->async_read_some(boost::asio::buffer(miner_bufs[idx]), [this, idx](const boost::system::error_code& err, size_t len) {
-		std::cout << "Read from miner!\n";
+		std::cout << "\033[32m\n\nRead from miner!\033[0m\n\n";
 		try {
 			if (len == 0) throw std::runtime_error{"Empty Read"};
 			if (err) throw err;
@@ -47,6 +48,7 @@ void Sweatshop::listen_for_gold(size_t idx) {
 			rec = rec.substr(0, len);
 			found_cb(rec);
 		} catch (std::exception& err) {
+			LOG_ERROR("Miner Read");
 			LOG_ERROR(err.what());
 		}
 
@@ -80,7 +82,11 @@ void Sweatshop::announce_hash(std::string hash) {
 	last_hash = hash;
 	auto buf = boost::asio::buffer(hash);
 	for (auto& miner : miners) {
-		miner->send(buf);
+		try {
+			miner->send(buf);
+		} catch (const std::exception& err) {
+			LOG_ERROR(err.what());
+		}
 	}
 
 	if (!working) {

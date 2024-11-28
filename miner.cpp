@@ -133,15 +133,10 @@ void listener(tcp::socket& chain, Finder& finder, std::array<char, 64>& buf) {
 			return;
 		}
 
-		std::cout << "Read new hash!\n";
-
-		std::cout.write(buf.data(), 64);
-		std::cout << "\n";
-
 		string hash{buf.data()};
 		hash = hash.substr(0, len);
 
-		std::cout << len << " " << hash << "\n";
+		std::cout << "Read new hash! " << hash << "\n";
 
 		finder.set_last_hash(hash);
 		listener(chain, finder, buf);
@@ -219,6 +214,8 @@ int main(int argc, char* argv[]) {
 		// std::cout << "IO Polled";
 	};
 
+	chain.send(boost::asio::buffer("ayo uhhhhh"));
+
 	while (true) {
 		for (auto& msg : curr_block.messages) {
 			std::random_shuffle(msg.begin(), msg.end());
@@ -229,7 +226,6 @@ int main(int argc, char* argv[]) {
 		std::cout << "Finding new nonce\n";
 		auto start = get_now();
 		finder.find_nonce(refresher, idx);
-		// find_nonce(last_hash, curr_block);
 		++num_blocks;
 		auto dur = get_now() - start;
 		max_time = std::max(dur, max_time);
@@ -248,13 +244,15 @@ int main(int argc, char* argv[]) {
 		// std::cout << "Sending block to chain\n";
 		chain.send(boost::asio::buffer(block.dump()));
 		last_hash = curr_block.hash;
+		std::cout << "Our hash: " << last_hash << "\n";
+		std::cout << "Sent hash: " << block["hash"] << "\n";
 		// Block until we read something
 		// std::cout << "Waiting until we get something back\n";
 		len = chain.read_some(boost::asio::buffer(buf), err);
 		// std::cout << len << "\n";
 		last_hash = string{buf.data()};
 		last_hash = last_hash.substr(0, len);
-		// std::cout << last_hash << "\n";
+		std::cout << "Read in hash: " << last_hash << "\n";
 	}
 
 	return 0;

@@ -1,4 +1,4 @@
-CPPC := g++
+CPPC := clang++
 CPPFLAGS := -g -std=c++20 -Wall
 CUDAFLAGS := --expt-relaxed-constexpr -O2
 # CPPFLAGS := /std:c++20 /Wall /EHsc
@@ -8,8 +8,11 @@ CPPOBJS := $(CPPSRCS:.cpp=.o)
 CUDASRCS := $(wildcard *.cu)
 CUDAOBJS := $(CUDASRCS:.cu=.o)
 
-all: chain.o csha256.o sweatshop.o
+chain: chain.o csha256.o sweatshop.o
 	$(CPPC) $^ -o chain.out $(CPPFLAGS)
+
+comp_chain: CPPFLAGS += -DCOMP_CHAIN
+comp_chain: chain
 
 # $(CPPC) $^ /Fo: chain.exe $(CPPFLAGS)
 

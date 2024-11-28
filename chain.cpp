@@ -25,8 +25,11 @@ using boost::asio::ip::tcp;
 
 #include "sweatshop.hpp"
 
-// constexpr auto known_host = "192.168.102.146";
+#ifdef COMP_CHAIN
+constexpr auto known_host = "192.168.102.146";
+#else
 constexpr auto known_host = "silicon.cs.umanitoba.ca";
+#endif
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Block, minedBy, messages, nonce, height, hash, timestamp)
 
@@ -163,10 +166,12 @@ class Chain {
 		std::vector<udp::endpoint> wrong_peers{};
 
 		Sweatshop workers;
+		string global_last_hash;
 
 		bool add_block(Block b) {
 			if (b.height != chain.size()) return false;
 			if (chain_verified && hash_block(chain[chain.size() - 1].hash, b) != b.hash) return false;
+			global_last_hash = b.hash;
 			chain.push_back(b);
 			workers.announce_hash(b.hash);
 			return true;
@@ -446,7 +451,10 @@ class Chain {
 				return (p.local_height == longest && p.local_hash == hash);
 			});
 
+			global_last_hash = hash;
 			workers.announce_hash(hash);
+
+			std::cout << "Decided on " << longest << "@" << hash << "\n";
 
 			get_blocks(longest, agree_peers);
 		}
@@ -535,9 +543,13 @@ class Chain {
 			if (now < next_self_check) return;
 			next_self_check = now + self_check_time;
 
+			if (global_last_hash != "") {
+				workers.announce_hash(global_last_hash);
+			}
+
 			size_t filled_reqs = count_requests();
-			std::cout << "Performing self check\n";
-			std::cout << "Performing Consensus: " << (in_consensus ? "Yes\n" : "No\n");
+			std::cout << "Performing self check, ";
+			std::cout << "Performing Consensus: " << (in_consensus ? "Yes, " : "No, ");
 			std::cout << "Requests: " << filled_reqs << "/" << reqs.size() << "\n";
 
 			handle_new_block();
@@ -589,10 +601,12 @@ class Chain {
 					complete_consensus();
 				}
 			} else {
+				#ifndef COMP_CHAIN
 				if (!chain_verified && reqs.size() == 0) {
 					std::cout << "Verifying Chain!\n";
 					verify_chain();
 				}
+				#endif
 			}
 
 			std::cout << "Self Check Complete\n";
@@ -700,12 +714,16 @@ class Chain {
 					LOG_ERROR(err.what());
 				}
 
-				workers.announce_hash(chain[chain.size() - 1].hash);
+				if (chain.size() > 0 && chain[chain.size() - 1].hash != "") {
+					workers.announce_hash(chain[chain.size() - 1].hash);
+				}
 			}} {
+			#ifndef COMP_CHAIN
 			my_host = boost::asio::ip::host_name();
 			std::cout << "Our Address: " << my_host << "\n";
 			udp::endpoint public_ep = *udp_res.resolve({udp::v4(), my_host, std::to_string(my_port)});
 			my_host = public_ep.address().to_string();
+			#endif
 			std::cout << "Our Address: " << my_host << "\n";
 			std::cout << "Our Port: " << my_port << "\n";
 
@@ -715,7 +733,9 @@ class Chain {
 
 			// demo_get_chain(100);
 
+			#ifndef COMP_CHAIN
 			collect_peers();
+			#endif
 			request_stats();
 			main_recv();
 
