@@ -149,7 +149,7 @@ void listener(tcp::socket& chain, Finder& finder, std::array<char, 64>& buf) {
 }
 
 int main(int argc, char* argv[]) {
-	test_hash();
+	// test_hash();
 
 	if (argc < 2) {
 		LOG_ERROR("Please Give me a host idk what to do");

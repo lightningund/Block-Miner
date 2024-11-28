@@ -23,6 +23,8 @@ using json = nlohmann::json;
 using boost::asio::ip::udp;
 using boost::asio::ip::tcp;
 
+#include "sweatshop.hpp"
+
 // constexpr auto known_host = "192.168.102.146";
 constexpr auto known_host = "silicon.cs.umanitoba.ca";
 
@@ -36,7 +38,7 @@ host_t my_host = "192.168.102.146";
 port_t my_port = 8470;
 name_t my_name = "Ben's Computer";
 
-boost::asio::io_context io_ctxt{};
+static boost::asio::io_context io_ctxt{};
 
 string hash_block(string last_hash, Block block) {
 	string input = last_hash;
@@ -151,9 +153,6 @@ class Chain {
 		bool in_consensus = false;
 		bool chain_verified = false;
 
-		std::vector<tcp::socket*> miners{};
-		std::vector<std::array<char, 1024>> miner_bufs{};
-
 		std::array<char, 1024> recv_buf{};
 		Receipt recv_receipt;
 
@@ -163,13 +162,13 @@ class Chain {
 		std::vector<Peer> agree_peers{};
 		std::vector<udp::endpoint> wrong_peers{};
 
+		Sweatshop workers;
+
 		bool add_block(Block b) {
 			if (b.height != chain.size()) return false;
 			if (chain_verified && hash_block(chain[chain.size() - 1].hash, b) != b.hash) return false;
 			chain.push_back(b);
-			for (auto& miner : miners) {
-				miner->send(boost::asio::buffer(b.hash));
-			}
+			workers.announce_hash(b.hash);
 			return true;
 		}
 
@@ -211,57 +210,6 @@ class Chain {
 			} catch (const std::exception& e) {
 				LOG_ERROR(e.what());
 			}
-		}
-
-		void check_for_miner_connection(tcp::acceptor& acceptor) {
-			miners.push_back(new tcp::socket{io_ctxt});
-			std::cout << "Looking for a miner\n";
-			acceptor.async_accept(*miners[miners.size() - 1], [this, &acceptor](const boost::system::error_code& err) {
-				std::cout << "New miner connection\n";
-
-				tcp::socket* sock = miners[miners.size() - 1];
-
-				string to_miner = std::to_string(miners.size());
-				sock->send(boost::asio::buffer(to_miner));
-				std::cout << "Sent to miner\n";
-				std::array<char, 1024> m_buf{};
-				size_t m_len = sock->receive(boost::asio::buffer(m_buf));
-				string m_resp{m_buf.data()};
-				m_resp = m_resp.substr(0, m_len);
-				std::cout << m_resp << "\n";
-				miner_bufs.push_back({});
-				check_for_miner_connection(acceptor);
-			});
-		}
-
-		void check_miner(size_t idx) {
-			miners[idx]->async_read_some(boost::asio::buffer(miner_bufs[idx]), [this, idx](const boost::system::error_code& err, size_t len) {
-				std::cout << "Read from miner!\n";
-				try {
-					if (len == 0) throw std::runtime_error{"Empty Read"};
-					if (err) throw err;
-
-					string rec{miner_bufs[idx].data()};
-					rec = rec.substr(0, len);
-					std::cout << len << "\n";
-					std::cout << rec << "\n";
-					try {
-						json block = json::parse(rec);
-						block["height"] = chain.size();
-						Block new_block = block.template get<Block>();
-						bool added = add_block(new_block);
-
-						if (added) new_block_made = true;
-					} catch (std::exception& err) {
-						std::cerr << err.what() << "\n";
-					}
-				} catch (std::exception& err) {
-					LOG_ERR(err.what());
-				}
-
-				miners[idx]->send(boost::asio::buffer(chain[chain.size() - 1].hash));
-				check_miner(idx);
-			});
 		}
 
 		// Can receive up to 1024 characters at a time
@@ -415,10 +363,7 @@ class Chain {
 
 			if (!in_consensus) {
 				Block b = chain[chain.size() - 1];
-				for (int i = 0; i < miners.size(); ++i) {
-					miners[i]->send(boost::asio::buffer(b.hash));
-					check_miner(i);
-				}
+				workers.announce_hash(b.hash);
 			}
 		}
 
@@ -685,7 +630,7 @@ class Chain {
 						if (in_consensus) return;
 						request_stats();
 					}
-				} catch(std::exception e) {
+				} catch(const std::exception& e) {
 					LOG_ERROR(e.what());
 				}
 
@@ -705,36 +650,34 @@ class Chain {
 			io_ctxt.poll();
 			// std::cout << "IO Polled\n";
 
+			workers.io_update();
+
 			self_check();
 		}
 
 	public:
-		Chain(int num_miners) {
+		Chain(int num_miners) :
+			workers{[this](string data){
+				std::cout << data << "\n";
+				try {
+					json block = json::parse(data);
+					block["height"] = chain.size();
+					Block new_block = block.template get<Block>();
+					bool added = add_block(new_block);
+
+					if (added) new_block_made = true;
+				} catch (const std::exception& err) {
+					LOG_ERROR(err.what());
+				}
+
+				workers.announce_hash(chain[chain.size() - 1].hash);
+			}} {
 			my_host = boost::asio::ip::host_name();
 			std::cout << "Our Address: " << my_host << "\n";
 			udp::endpoint public_ep = *udp_res.resolve({udp::v4(), my_host, std::to_string(my_port)});
 			my_host = public_ep.address().to_string();
 			std::cout << "Our Address: " << my_host << "\n";
 			std::cout << "Our Port: " << my_port << "\n";
-
-			tcp::acceptor acceptor{io_ctxt, tcp::endpoint{tcp::v4(), 50001}};
-			check_for_miner_connection(acceptor);
-			// for (int i = 0; i < num_miners; ++i) {
-			// 	std::cout << "Waiting to connect to miner\n";
-			// 	auto sock = new tcp::socket(io_ctxt);
-			// 	acceptor.accept(*sock);
-
-			// 	string to_miner = std::to_string(i);
-			// 	sock->send(boost::asio::buffer(to_miner));
-			// 	std::cout << "Sent to miner\n";
-			// 	std::array<char, 1024> m_buf{};
-			// 	size_t m_len = sock->receive(boost::asio::buffer(m_buf));
-			// 	string m_resp{m_buf.data()};
-			// 	m_resp = m_resp.substr(0, m_len);
-			// 	std::cout << m_resp << "\n";
-			// 	miners.push_back(sock);
-			// 	miner_bufs.push_back({});
-			// }
 
 			udp::endpoint silicon = *udp_res.resolve({udp::v4(), known_host, "8999"});
 			add_peer(silicon);
@@ -752,12 +695,6 @@ class Chain {
 				} catch(const std::exception& e) {
 					LOG_ERROR(e.what());
 				}
-			}
-		}
-
-		~Chain() {
-			for (auto m : miners) {
-				delete m;
 			}
 		}
 };

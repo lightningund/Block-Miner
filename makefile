@@ -8,7 +8,7 @@ CPPOBJS := $(CPPSRCS:.cpp=.o)
 CUDASRCS := $(wildcard *.cu)
 CUDAOBJS := $(CUDASRCS:.cu=.o)
 
-all: chain.o csha256.o
+all: chain.o csha256.o sweatshop.o
 	$(CPPC) $^ -o chain.out $(CPPFLAGS)
 
 # $(CPPC) $^ /Fo: chain.exe $(CPPFLAGS)

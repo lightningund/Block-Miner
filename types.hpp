@@ -10,6 +10,7 @@ using json = nlohmann::json;
 
 using std::string;
 using boost::asio::ip::udp;
+using boost::asio::ip::tcp;
 using namespace std::chrono;
 
 using rcv_timeout_option = boost::asio::detail::socket_option::integer<SOL_SOCKET, SO_RCVTIMEO>;
