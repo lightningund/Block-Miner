@@ -41,7 +41,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Gossip, host, port, name, id)
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(GossipReply, host, port, name)
 
-host_t my_host = "192.168.102.146";
+host_t my_host = "192.168.102.145";
 port_t my_port = 8470;
 name_t my_name = "Ben's Computer";
 
@@ -152,6 +152,7 @@ class Chain {
 		timepoint next_self_check;
 		timepoint next_mine_check;
 		timepoint next_consensus;
+		timepoint next_chain_check;
 		timepoint last_gossip;
 
 		udp::resolver udp_res{io_ctxt};
@@ -280,22 +281,20 @@ class Chain {
 		void get_block(size_t idx, const udp::endpoint& target) {
 			try {
 				if (chain.size() > 0) {
-					if (chain.at(idx).hash != "") {
-						json reply = chain[idx];
-						reply["type"] = "GET_BLOCK_REPLY";
-						std::cout << "Block: " << reply << "\n";
-						send(reply, target);
-					} else {
-						throw std::runtime_error{"Sorry, seems we don't have that one"};
-					}
+					Block b = chain.at(idx);
+
+					if (b.height == -1) throw std::runtime_error{"Sorry, seems we don't have " + std::to_string(idx)};
+
+					json reply = b;
+					reply["type"] = "GET_BLOCK_REPLY";
+					std::cout << "Block: " << reply << "\n";
+					send(reply, target);
 				} else {
 					throw std::runtime_error{"Empty Chain"};
 				}
 			} catch (const std::exception& e) {
 				LOG_ERROR(e.what());
-				json reply = Block{};
-				reply["type"] = "GET_BLOCK_REPLY";
-				send(reply, target);
+				send(json{e.what()}, target);
 			}
 		}
 
@@ -337,6 +336,7 @@ class Chain {
 
 		// Called when we find an erroneous block while verifying
 		void LIES() {
+			#ifndef COMP_CHAIN
 			chain_verified = false;
 			chain.clear();
 			// Say that everyone who suggested this chain was a dirty liar
@@ -346,6 +346,7 @@ class Chain {
 			agree_peers.clear();
 			reqs.clear();
 			request_stats();
+			#endif
 		}
 
 		void verify_chain() {
@@ -384,6 +385,22 @@ class Chain {
 				// reqs.push_back(make_request(silicon, "{\"type\":\"GET_BLOCK\",\"height\":" + std::to_string(i) + "}", "GET_BLOCK_REPLY"));
 				for (auto& peer : agreers) {
 					reqs.push_back(make_request(peer.endpoint, "{\"type\":\"GET_BLOCK\",\"height\":" + std::to_string(i) + "}", "GET_BLOCK_REPLY"));
+				}
+			}
+		}
+
+		// Go through the chain and make a request for all the blocks we are missing
+		void check_chain() {
+			timepoint now = get_now();
+			if (now < next_chain_check) return;
+
+			next_chain_check = now + chain_check_time;
+
+			for (int i = 0; i < chain.size(); ++i) {
+				if (chain[i].height == -1) {
+					for (auto& peer : agree_peers) {
+						reqs.push_back(make_request(peer.endpoint, "{\"type\":\"GET_BLOCK\",\"height\":" + std::to_string(i) + "}", "GET_BLOCK_REPLY"));
+					}
 				}
 			}
 		}
@@ -558,6 +575,8 @@ class Chain {
 
 			handle_new_block();
 
+			check_chain();
+
 			// Make sure to generate gossip if we haven't sent anything in a while
 			if (last_gossip + re_gossip_time < now) {
 				make_gossip();
@@ -605,12 +624,10 @@ class Chain {
 					complete_consensus();
 				}
 			} else {
-				#ifndef COMP_CHAIN
 				if (!chain_verified && reqs.size() == 0) {
 					std::cout << "Verifying Chain!\n";
 					verify_chain();
 				}
-				#endif
 			}
 
 			std::cout << "Self Check Complete\n";
@@ -630,7 +647,7 @@ class Chain {
 
 					add_peer(recv_receipt.sender);
 
-					// std::cout << recv_receipt.msg.size() << " " << recv_receipt.msg << "\n";
+					std::cout << recv_receipt.msg.size() << " " << recv_receipt.msg << "\n";
 
 					json incoming = json::parse(recv_receipt.msg);
 
@@ -737,9 +754,9 @@ class Chain {
 
 			// demo_get_chain(100);
 
-			#ifndef COMP_CHAIN
+			// #ifndef COMP_CHAIN
 			collect_peers();
-			#endif
+			// #endif
 			request_stats();
 			main_recv();
 

@@ -13,6 +13,7 @@ constexpr auto peer_scan_time = 10s;
 constexpr auto max_tries = 50;
 constexpr auto consensus_time = 5min;
 constexpr auto max_resend = 100; // Max number of messages to re-send at once
+constexpr auto chain_check_time = 30min;
 
 timepoint get_now() {
 	return std::chrono::system_clock::now();
