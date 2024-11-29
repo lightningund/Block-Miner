@@ -31,8 +31,10 @@ using boost::asio::ip::tcp;
 
 #ifdef COMP_CHAIN
 std::vector<std::pair<string, string>> known_hosts{{"192.168.102.145", "8999"}, {"192.168.102.146", "8999"}, {"192.168.102.145", "8997"}, {"192.168.102.146", "8997"}};
+constexpr auto difficulty = "00000000";
 #else
 std::vector<std::pair<string, string>> known_hosts{{"silicon.cs.umanitoba.ca", "8999"}, {"eagle.cs.umanitoba.ca", "8999"}, {"grebe.cs.umanitoba.ca", "8999"}, {"hawk.cs.umanitoba.ca", "8999"}};
+constexpr auto difficulty = "000000000";
 #endif
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Block, minedBy, messages, nonce, height, hash, timestamp)
@@ -84,64 +86,22 @@ void test_hash() {
 	hash_block("", test_block);
 }
 
-template <size_t size>
-class UDP_Receiver {
-	using ERR = boost::system::error_code;
-	public:
-		UDP_Receiver(udp::socket& sock) : sock{sock} {}
-
-		Receipt recv_from(const seconds& timeout) {
-			Receipt rec;
-			std::array<char, 1024> buf;
-			size_t len = sock.receive_from(boost::asio::buffer(buf), rec.sender);
-			if (len == 0) return {};
-
-			rec.received = get_now();
-
-			string resp{buf.data()};
-			rec.msg = resp.substr(0, len);
-
-			return rec;
-		}
-	private:
-		udp::socket& sock;
-		std::array<char, size> buf;
-		Receipt rec;
-		bool done = false;
-
-		void start_recv() {
-			done = false;
-			sock.async_receive_from(boost::asio::buffer(buf), rec.sender, [&](const ERR& err, size_t len) {
-				done = true;
-				if (!err) {
-					std::cout << "Received!\n" << len << "\n";
-					rec.received = get_now();
-					string resp{buf.data()};
-					rec.msg = resp.substr(0, len);
-				} else if (err == boost::asio::error::operation_aborted) {
-					// Timed out
-					LOG_ERROR("Receive Timed Out");
-				} else {
-					LOG_ERROR("Error Of Some Kind");
-					LOG_ERROR(err.message());
-				}
-			});
-		}
-
-		void spin(const seconds& timeout) {
-			timepoint finish = get_now() + timeout;
-			while (get_now() < finish && !done) {
-				io_ctxt.run();
-			}
-
-			std::cout << "Done Spinning\n";
-
-			if (!done) {
-				std::cout << "No receive tho\n";
-				sock.cancel();
-			}
-		}
-};
+// Runs some simple to checks to see if the block is valid at a glance
+bool quick_check_block(const Block& b) {
+	// Wrong number of zeroes
+	if (!b.hash.ends_with(difficulty)) return false;
+	// Reported hash is the wrong length somehow
+	if (b.hash.length() != 64) return false;
+	// Too many messages
+	if (b.messages.size() > 10) return false;
+	// No messages
+	if (b.messages.size() == 0) return false;
+	// Any messages that are too long
+	for (auto&& msg : b.messages) {
+		if (msg.length() > 20) return false;
+	}
+	return true;
+}
 
 class Chain {
 	private:
@@ -173,7 +133,24 @@ class Chain {
 		Sweatshop workers;
 		string global_last_hash;
 
+		bool verify_idx(size_t idx) {
+			try {
+				Block b = chain.at(idx);
+				if (!quick_check_block(b)) throw "Invalid Block";
+				// if (idx > 0) {
+				// 	if (chain[idx - 1].height != -1) {
+				// 		if (hash_block(chain[idx - 1].hash, b) != b.hash) throw "Reported Hash is Incorrect";
+				// 	}
+				// }
+			} catch(const std::exception& err) {
+				LOG_ERROR("Verifying " + std::to_string(idx));
+				LOG_ERROR(err.what());
+				return false;
+			}
+		}
+
 		bool add_block(Block b) {
+			if (!quick_check_block(b)) return false;
 			if (b.height != chain.size()) return false;
 			if (chain_verified && hash_block(chain[chain.size() - 1].hash, b) != b.hash) return false;
 			global_last_hash = b.hash;
@@ -256,11 +233,13 @@ class Chain {
 			json goss_json = incoming;
 			goss_json["type"] = "GOSSIP";
 
+			std::cout << "Forwarding gossip to ";
 			for (int i = 0; i < peers_to_repeat_to; ++i) {
 				size_t idx = std::rand() % peers.size();
-				std::cout << "Forwarding gossip to " << idx << "\n";
+				std::cout << idx << ", ";
 				send(goss_json, peers[idx].endpoint);
 			}
+			std::cout << "\n";
 
 			last_gossip = get_now();
 
@@ -380,10 +359,7 @@ class Chain {
 
 		void get_blocks(size_t len, std::vector<Peer> agreers) {
 			next_chain_check = get_now() + chain_check_time;
-			// udp::endpoint silicon = *udp_res.resolve({udp::v4(), known_host, "8999"});
-
 			for (long i = len - 1; i >= 0; --i) {
-				// reqs.push_back(make_request(silicon, "{\"type\":\"GET_BLOCK\",\"height\":" + std::to_string(i) + "}", "GET_BLOCK_REPLY"));
 				for (auto& peer : agreers) {
 					reqs.push_back(make_request(peer.endpoint, "{\"type\":\"GET_BLOCK\",\"height\":" + std::to_string(i) + "}", "GET_BLOCK_REPLY"));
 				}
@@ -421,11 +397,7 @@ class Chain {
 						try {
 							peer.local_hash = req.response["hash"];
 							peer.local_height = req.response["height"];
-							// TODO
-							// Add more checks
-							// Make this scale with difficulty
-							// Make this a function we can just call
-							if (!peer.local_hash.ends_with("00000000")) {
+							if (!peer.local_hash.ends_with(difficulty)) {
 								wrong_peers.push_back(peer.endpoint);
 								req.response["height"] = 0;
 							}
@@ -662,13 +634,10 @@ class Chain {
 							if (filled.response_type == "GET_BLOCK_REPLY" || filled.response_type == "ANNOUNCE") {
 								try {
 									Block b = filled.response.template get<Block>();
-									// Make sure that at least the reported hash makes sense
-									// TODO:
-									//		Add more checks
-									//		Have this scale with difficulty
-									if (!b.hash.ends_with("00000000")) LIES();
-									else {
-										chain[b.height] = b;
+									chain[b.height] = b;
+									if (!verify_idx(b.height)) {
+										wrong_peers.push_back(filled.target);
+										chain[b.height].height = -1;
 									}
 								} catch(const std::exception& e) {
 									LOG_ERROR(e.what());
