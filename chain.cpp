@@ -365,6 +365,8 @@ class Chain {
 		void verify_chain() {
 			chain_verified = true;
 
+			if (chain.size() == 0) return;
+
 			string last_hash = "";
 
 			for (int i = 0; i < chain.size(); ++i) {
@@ -611,6 +613,7 @@ class Chain {
 				}
 			}
 
+			#ifndef EVIL_MODE
 			size_t sent = 0;
 
 			// Re-send requests we haven't received responses to
@@ -646,6 +649,7 @@ class Chain {
 					verify_chain();
 				}
 			}
+			#endif
 		}
 
 		void main_recv() {
@@ -667,6 +671,7 @@ class Chain {
 
 					json incoming = json::parse(recv_receipt.msg);
 
+					#ifndef EVIL_MODE
 					Request filled = check_requests(incoming, recv_receipt.sender);
 					if (in_consensus) {
 						size_t num_filled = count_requests();
@@ -692,6 +697,7 @@ class Chain {
 							std::erase_if(reqs, [](Request r) { return r.done; });
 						}
 					}
+					#endif
 
 					if (incoming["type"] == "GOSSIP") {
 						process_gossip(incoming.template get<Gossip>());
@@ -760,8 +766,6 @@ class Chain {
 				}
 			}}
 		{
-			std::cout << "Testing\n";
-
 			#ifndef COMP_CHAIN
 			my_host = boost::asio::ip::host_name();
 			std::cout << "Our Address: " << my_host << "\n";
@@ -779,12 +783,15 @@ class Chain {
 			make_gossip();
 
 			#ifndef EVIL_MODE
-			#ifndef COMP_CHAIN
-			collect_peers();
-			#endif
-			request_stats();
+				#ifndef COMP_CHAIN
+					collect_peers();
+				#endif
+				request_stats();
 			#else
-			workers.announce_hash("");
+				in_consensus = false;
+				chain_verified = true;
+				chain = std::vector<Block>();
+				workers.announce_hash("");
 			#endif
 
 			main_recv();

@@ -123,11 +123,11 @@ string last_hash;
 
 void listener(tcp::socket& chain, Finder& finder, std::array<char, 64>& buf) {
 	boost::asio::async_read(chain, boost::asio::buffer(buf), [&](const boost::system::error_code& err, size_t len) {
-		if (len == 0) {
-			std::cout << "Empty read\n";
-			listener(chain, finder, buf);
-			return;
-		}
+		// if (len == 0) {
+		// 	std::cout << "Empty read\n";
+		// 	listener(chain, finder, buf);
+		// 	return;
+		// }
 		if (err) {
 			LOG_ERROR(err.message());
 			listener(chain, finder, buf);
@@ -176,11 +176,13 @@ int main(int argc, char* argv[]) {
 	string msg = "Sup hoe";
 	chain.send(boost::asio::buffer(msg));
 
-	std::cout << "Waiting for last hash\n";
-	len = chain.read_some(boost::asio::buffer(buf), err);
+	// std::cout << "Waiting for last hash\n";
+	// len = chain.read_some(boost::asio::buffer(buf), err);
 
-	last_hash = string{buf.data()};
-	last_hash = last_hash.substr(0, len);
+	// last_hash = string{buf.data()};
+	// last_hash = last_hash.substr(0, len);
+
+	last_hash = "";
 
 	std::cout << last_hash << "\n";
 
