@@ -700,16 +700,20 @@ class Chain {
 					} else if (incoming["type"] == "STATS") {
 						std::cout << "OOOO Sending stats\n";
 						send_stats(recv_receipt.sender);
-					}else if (incoming["type"] == "ANNOUNCE") {
+					} else if (incoming["type"] == "ANNOUNCE") {
+						#ifndef EVIL_MODE
 						add_block(incoming.template get<Block>());
+						#endif
 					} else if (incoming["type"] == "GET_BLOCK") {
 						get_block(incoming["height"], recv_receipt.sender);
 					} else if (incoming["type"] == "CONSENSUS") {
+						#ifndef EVIL_MODE
 						if (!in_consensus) {
 							// It's probably been a while, lets give them another chance
 							wrong_peers.clear();
 							request_stats();
 						}
+						#endif
 					}
 				} catch(const std::exception& e) {
 					LOG_ERROR(e.what());
@@ -744,11 +748,9 @@ class Chain {
 					json block = json::parse(data);
 					block["height"] = chain.size();
 					Block new_block = block.template get<Block>();
-					if (!in_consensus) {
-						bool added = add_block(new_block);
+					bool added = add_block(new_block);
 
-						if (added) announce_block(new_block);
-					}
+					if (added) announce_block(new_block);
 				} catch (const std::exception& err) {
 					LOG_ERROR(err.what());
 				}
@@ -776,12 +778,15 @@ class Chain {
 
 			make_gossip();
 
-			// demo_get_chain(100);
-
+			#ifndef EVIL_MODE
 			#ifndef COMP_CHAIN
 			collect_peers();
 			#endif
 			request_stats();
+			#else
+			workers.announce_hash("");
+			#endif
+
 			main_recv();
 
 			while (true) {

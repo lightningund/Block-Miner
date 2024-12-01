@@ -119,6 +119,8 @@ nanoseconds max_time;
 nanoseconds min_time;
 size_t num_blocks;
 
+string last_hash;
+
 void listener(tcp::socket& chain, Finder& finder, std::array<char, 64>& buf) {
 	boost::asio::async_read(chain, boost::asio::buffer(buf), [&](const boost::system::error_code& err, size_t len) {
 		if (len == 0) {
@@ -134,10 +136,13 @@ void listener(tcp::socket& chain, Finder& finder, std::array<char, 64>& buf) {
 
 		string hash{buf.data()};
 		hash = hash.substr(0, len);
+		if (hash != last_hash) {
+			std::cout << "\rRead new hash! " << hash;
 
-		std::cout << "\rRead new hash! " << hash;
+			finder.set_last_hash(hash);
+			last_hash = hash;
+		}
 
-		finder.set_last_hash(hash);
 		listener(chain, finder, buf);
 	});
 }
@@ -174,7 +179,7 @@ int main(int argc, char* argv[]) {
 	std::cout << "Waiting for last hash\n";
 	len = chain.read_some(boost::asio::buffer(buf), err);
 
-	string last_hash{buf.data()};
+	last_hash = string{buf.data()};
 	last_hash = last_hash.substr(0, len);
 
 	std::cout << last_hash << "\n";
