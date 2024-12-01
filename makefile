@@ -1,4 +1,4 @@
-CPPC := clang++
+CPPC := g++
 CPPFLAGS := -g -std=c++20 -Wall
 CUDAFLAGS := --expt-relaxed-constexpr -O2
 # CPPFLAGS := /std:c++20 /Wall /EHsc
@@ -18,6 +18,10 @@ comp_chain: chain.o csha256.o sweatshop.o
 
 miner: miner.o kernel.o sha256.o csha256.o
 	nvcc $^ -o miner.out $(CUDAFLAGS)
+
+cpu_miner: CPPFLAGS += -O2 -fopenmp
+cpu_miner: miner.o okernel.o osha.o csha256.o
+	$(CPPC) $^ -o cpu_miner.out $(CPPFLAGS)
 
 profiler: profile_miner.o kernel.o sha256.o
 	nvcc $^ -o profiler.out $(CUDAFLAGS)

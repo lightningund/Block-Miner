@@ -24,11 +24,38 @@ using stamp_t = long long;
 
 using timepoint = time_point<system_clock>;
 
+constexpr auto peers_to_repeat_to = 3;
+constexpr auto msg_dead_time = 2s;
+constexpr auto peer_dead_time = 1min;
+constexpr auto re_gossip_time = 30s;
+constexpr auto self_check_time = 1s;
+constexpr auto mine_check_time = 5min;
+constexpr auto peer_scan_time = 10s;
+constexpr auto max_tries = 50;
+constexpr auto consensus_time = 5min;
+constexpr auto max_resend = 100; // Max number of messages to re-send at once
+constexpr auto chain_check_time = 30min;
+
+static inline timepoint get_now() {
+	return std::chrono::system_clock::now();
+}
+
+static inline stamp_t get_timestamp() {
+	using namespace std::chrono;
+	return duration_cast<milliseconds>(get_now().time_since_epoch()).count();
+}
+
+static inline msg_id_t get_msg_id() {
+	return std::to_string(get_timestamp());
+}
+
+static inline bool same_ep(const udp::endpoint& a, const udp::endpoint& b) {
+	return a.address() == b.address() && a.port() == b.port();
+}
+
 extern host_t my_host;
 extern port_t my_port;
 extern name_t my_name;
-extern msg_id_t get_msg_id();
-extern bool same_ep(const udp::endpoint& a, const udp::endpoint& b);
 
 struct Gossip {
 	host_t host;
@@ -51,10 +78,6 @@ struct Peer {
 	timepoint last_msg;
 	size_t local_height;
 	string local_hash;
-
-	bool operator==(const Peer& p) const {
-		return same_ep(endpoint, p.endpoint);
-	}
 };
 
 struct Receipt {

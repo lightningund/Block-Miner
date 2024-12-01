@@ -17,7 +17,6 @@
 #include "csha256.hpp"
 
 #include "types.hpp"
-#include "helpers.hpp"
 
 #include "json.hpp"
 using json = nlohmann::json;
