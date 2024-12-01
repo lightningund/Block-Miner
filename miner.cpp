@@ -143,7 +143,7 @@ void listener(tcp::socket& chain, Finder& finder, std::array<char, 64>& buf) {
 }
 
 int main(int argc, char* argv[]) {
-	test_hash();
+	// test_hash();
 
 	if (argc < 2) {
 		LOG_ERROR("Please Give me a host idk what to do");
@@ -179,20 +179,25 @@ int main(int argc, char* argv[]) {
 
 	std::cout << last_hash << "\n";
 
+	// Block curr_block{
+	// 	.minedBy = "Ben's GPU",
+	// 	.messages = {
+	// 		"According to all",
+	// 		"known laws of",
+	// 		"aviation, there is",
+	// 		"no way a bee should",
+	// 		"be able to fly. Its",
+	// 		"wings are too small",
+	// 		"to get its fat",
+	// 		"little body off the",
+	// 		"ground. The bee, of",
+	// 		"course, flies"
+	// 	}
+	// };
+
 	Block curr_block{
 		.minedBy = "Ben's GPU",
-		.messages = {
-			"According to all",
-			"known laws of",
-			"aviation, there is",
-			"no way a bee should",
-			"be able to fly. Its",
-			"wings are too small",
-			"to get its fat",
-			"little body off the",
-			"ground. The bee, of",
-			"course, flies"
-		}
+		.messages = { "Sigma" }
 	};
 
 	very_start = get_now();
@@ -216,9 +221,9 @@ int main(int argc, char* argv[]) {
 	chain.send(boost::asio::buffer("ayo uhhhhh"));
 
 	while (true) {
-		for (auto& msg : curr_block.messages) {
-			std::random_shuffle(msg.begin(), msg.end());
-		}
+		// for (auto& msg : curr_block.messages) {
+		// 	std::random_shuffle(msg.begin(), msg.end());
+		// }
 
 		curr_block.timestamp = get_small_stamp();
 		finder.set_last_hash(last_hash);
