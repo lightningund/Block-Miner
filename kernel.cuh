@@ -7,8 +7,6 @@
 
 #include "shared.hpp"
 
-#include "config.h"
-
 using std::string;
 using hash_t = std::array<BYTE, 32>;
 

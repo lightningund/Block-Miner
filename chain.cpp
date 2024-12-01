@@ -30,11 +30,11 @@ using boost::asio::ip::tcp;
 #include "sweatshop.hpp"
 
 #ifdef COMP_CHAIN
-std::vector<std::pair<string, string>> known_hosts{{"192.168.102.145", "8999"}, {"192.168.102.146", "8999"}, {"192.168.102.145", "8997"}, {"192.168.102.146", "8997"}};
-constexpr auto difficulty = "00000000";
+std::vector<std::pair<string, string>> known_hosts{{"192.168.102.145", "8999"}, /*{"192.168.102.146", "8999"}, */{"192.168.102.145", "8997"}, {"192.168.102.146", "8997"}};
+constexpr auto difficulty = "000000000";
 #else
 std::vector<std::pair<string, string>> known_hosts{{"silicon.cs.umanitoba.ca", "8999"}, {"eagle.cs.umanitoba.ca", "8999"}, {"grebe.cs.umanitoba.ca", "8999"}, {"hawk.cs.umanitoba.ca", "8999"}};
-constexpr auto difficulty = "000000000";
+constexpr auto difficulty = "00000000";
 #endif
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Block, minedBy, messages, nonce, height, hash, timestamp)
@@ -43,7 +43,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Gossip, host, port, name, id)
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(GossipReply, host, port, name)
 
-host_t my_host = "192.168.102.145";
+host_t my_host = "192.168.102.146";
 port_t my_port = 8470;
 name_t my_name = "Ben's Computer";
 
@@ -88,17 +88,34 @@ void test_hash() {
 
 // Runs some simple to checks to see if the block is valid at a glance
 bool quick_check_block(const Block& b) {
+	// Not actually real
+	if (b.height == -1) return false;
 	// Wrong number of zeroes
-	if (!b.hash.ends_with(difficulty)) return false;
+	if (!b.hash.ends_with(difficulty)) {
+		LOG_ERROR("Not good enough hash");
+		return false;
+	}
 	// Reported hash is the wrong length somehow
-	if (b.hash.length() != 64) return false;
+	if (b.hash.length() != 64) {
+		LOG_ERROR("Fucked up hash");
+		return false;
+	}
 	// Too many messages
-	if (b.messages.size() > 10) return false;
+	if (b.messages.size() > 10) {
+		LOG_ERROR("Too many messages");
+		return false;
+	}
 	// No messages
-	if (b.messages.size() == 0) return false;
+	if (b.messages.size() == 0) {
+		LOG_ERROR("No Messages");
+		return false;
+	}
 	// Any messages that are too long
 	for (auto&& msg : b.messages) {
-		if (msg.length() > 20) return false;
+		if (msg.length() > 20) {
+			LOG_ERROR("Message too long");
+			return false;
+		}
 	}
 	return true;
 }
@@ -136,7 +153,7 @@ class Chain {
 		bool verify_idx(size_t idx) {
 			try {
 				Block b = chain.at(idx);
-				if (!quick_check_block(b)) throw "Invalid Block";
+				if (!quick_check_block(b)) throw std::runtime_error{"Invalid Block"};
 				// if (idx > 0) {
 				// 	if (chain[idx - 1].height != -1) {
 				// 		if (hash_block(chain[idx - 1].hash, b) != b.hash) throw "Reported Hash is Incorrect";
@@ -147,6 +164,8 @@ class Chain {
 				LOG_ERROR(err.what());
 				return false;
 			}
+
+			return true;
 		}
 
 		bool add_block(Block b) {
@@ -532,6 +551,15 @@ class Chain {
 			}
 		}
 
+		void announce_block(Block b) {
+			json block = b;
+			block["type"] = "ANNOUNCE";
+
+			for (auto& peer : peers) {
+				send(block, peer);
+			}
+		}
+
 		void self_check() {
 			timepoint now = get_now();
 
@@ -606,6 +634,7 @@ class Chain {
 		}
 
 		void main_recv() {
+			std::fill(recv_buf.begin(), recv_buf.end(), 0);
 			us_sock.async_receive_from(boost::asio::buffer(recv_buf), recv_receipt.sender, [this](boost::system::error_code err, size_t len) {
 				try {
 					if (len == 0) throw std::runtime_error("Empty Read");
@@ -661,8 +690,11 @@ class Chain {
 					} else if (incoming["type"] == "GET_BLOCK") {
 						get_block(incoming["height"], recv_receipt.sender);
 					} else if (incoming["type"] == "CONSENSUS") {
-						if (in_consensus) return;
-						request_stats();
+						if (!in_consensus) {
+							// It's probably been a while, lets give them another chance
+							wrong_peers.clear();
+							request_stats();
+						}
 					}
 				} catch(const std::exception& e) {
 					LOG_ERROR(e.what());
@@ -697,9 +729,11 @@ class Chain {
 					json block = json::parse(data);
 					block["height"] = chain.size();
 					Block new_block = block.template get<Block>();
-					bool added = add_block(new_block);
+					if (!in_consensus) {
+						bool added = add_block(new_block);
 
-					if (added) new_block_made = true;
+						if (added) announce_block(new_block);
+					}
 				} catch (const std::exception& err) {
 					LOG_ERROR(err.what());
 				}
@@ -707,7 +741,10 @@ class Chain {
 				if (chain.size() > 0 && chain[chain.size() - 1].hash != "") {
 					workers.announce_hash(chain[chain.size() - 1].hash);
 				}
-			}} {
+			}}
+		{
+			std::cout << "Testing\n";
+
 			#ifndef COMP_CHAIN
 			my_host = boost::asio::ip::host_name();
 			std::cout << "Our Address: " << my_host << "\n";
