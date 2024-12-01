@@ -16,10 +16,10 @@ static inline timepoint get_now() {
 	return std::chrono::system_clock::now();
 }
 
-constexpr auto difficulty = 9;
+constexpr auto difficulty = 8;
 constexpr auto nonce_max = 16;
 
-constexpr auto test_loops = 1024;
+constexpr auto test_loops = 56;
 
 template<size_t len>
 std::ostream& operator<<(std::ostream& os, const std::array<BYTE, len>& data) {
@@ -65,7 +65,7 @@ string hash_to_string(const hash_t& hash) {
 }
 
 void test_nonce(HashContext ctx, const size_t offset, size_t* golden, bool* found) {
-	#pragma omp parallel for private(ctx) num_threads(test_loops)
+	#pragma omp parallel for firstprivate(ctx) num_threads(test_loops)
 	for (size_t i = 0; i < test_loops; ++i) {
 		size_t nonce = i + offset * test_loops;
 		ctx.update(nonce);
@@ -126,6 +126,8 @@ void Finder::find_nonce(const std::function<void(void)> refresher, size_t idx) {
 	size_t golden;
 	bool found = false;
 	size_t loops = idx * 0xFFFFFF;
+
+	std::cout << "Finding nonce\n";
 
 	timepoint start = get_now();
 
