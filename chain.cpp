@@ -48,7 +48,7 @@ name_t my_name = "Ben's Computer";
 
 static boost::asio::io_context io_ctxt{};
 
-string hash_block(string last_hash, Block block) {
+static string hash_block(string last_hash, Block block) {
 	string input = last_hash;
 	input += block.minedBy;
 
@@ -72,7 +72,7 @@ string hash_block(string last_hash, Block block) {
 }
 
 // Tests the hash on the very first block
-void test_hash() {
+static void test_hash() {
 	Block test_block{
 		.minedBy = "Prof!",
 		.messages = {"Keep it", "simple.", "Veni", "vidi", "vici"},
@@ -86,7 +86,7 @@ void test_hash() {
 }
 
 // Runs some simple to checks to see if the block is valid at a glance
-bool quick_check_block(const Block& b) {
+static bool quick_check_block(const Block& b) {
 	// Not actually real
 	if (b.height == -1) return false;
 	// Wrong number of zeroes
@@ -117,6 +117,10 @@ bool quick_check_block(const Block& b) {
 		}
 	}
 	return true;
+}
+
+static inline string block_req_template(size_t idx) {
+	return "{\"type\":\"GET_BLOCK\",\"height\":" + std::to_string(idx) + "}";
 }
 
 class Chain {
@@ -275,12 +279,35 @@ class Chain {
 			}
 		}
 
+		void make_request(udp::endpoint& recip, string msg, string response_type) {
+			send(msg, recip);
+
+			reqs.push_back(Request{
+				.msg = msg,
+				.target = recip,
+				.last_send = get_now(),
+				.response_type = response_type,
+			});
+		}
+
+		void make_request(Peer& recip, string msg, string response_type) {
+			make_request(recip.endpoint, msg, response_type);
+		}
+
 		void get_block(size_t idx, const udp::endpoint& target) {
 			try {
 				if (chain.size() > 0) {
 					Block b = chain.at(idx);
 
-					if (b.height == -1) throw std::runtime_error{"Sorry, seems we don't have " + std::to_string(idx)};
+					if (b.height == -1) {
+						// We really should have this one
+						if (idx < chain.size()) {
+							for (auto& peer : agree_peers) {
+								make_request(peer, block_req_template(idx), "GET_BLOCK_REPLY");
+							}
+						}
+						throw std::runtime_error{"Sorry, seems we don't have " + std::to_string(idx)};
+					}
 
 					json reply = b;
 					reply["type"] = "GET_BLOCK_REPLY";
@@ -293,17 +320,6 @@ class Chain {
 				LOG_ERROR(e.what());
 				send(json{e.what()}, target);
 			}
-		}
-
-		Request make_request(udp::endpoint& recip, string msg, string response_type) {
-			send(msg, recip);
-
-			return Request{
-				.msg = msg,
-				.target = recip,
-				.last_send = get_now(),
-				.response_type = response_type,
-			};
 		}
 
 		// Check to see if the new message is the response to any of a list of requests
@@ -379,7 +395,7 @@ class Chain {
 			next_chain_check = get_now() + chain_check_time;
 			for (long i = len - 1; i >= 0; --i) {
 				for (auto& peer : agreers) {
-					reqs.push_back(make_request(peer.endpoint, "{\"type\":\"GET_BLOCK\",\"height\":" + std::to_string(i) + "}", "GET_BLOCK_REPLY"));
+					make_request(peer, block_req_template(i), "GET_BLOCK_REPLY");
 				}
 			}
 		}
@@ -395,7 +411,7 @@ class Chain {
 			for (int i = 0; i < chain.size(); ++i) {
 				if (chain[i].height == -1) {
 					for (auto& peer : agree_peers) {
-						reqs.push_back(make_request(peer.endpoint, "{\"type\":\"GET_BLOCK\",\"height\":" + std::to_string(i) + "}", "GET_BLOCK_REPLY"));
+						make_request(peer, block_req_template(i), "GET_BLOCK_REPLY");
 					}
 				}
 			}
@@ -503,7 +519,7 @@ class Chain {
 
 				if (wrong) continue;
 
-				reqs.push_back(make_request(peer.endpoint, msg, "STATS_REPLY"));
+				make_request(peer, msg, "STATS_REPLY");
 			}
 
 			std::cout << "Asked for stats\n";
@@ -534,7 +550,7 @@ class Chain {
 			chain = std::vector<Block>(num);
 
 			for (int i = 0; i < chain.size(); ++i) {
-				reqs.push_back(make_request(silicon, "{\"type\":\"GET_BLOCK\",\"height\":" + std::to_string(i) + "}", "GET_BLOCK_REPLY"));
+				make_request(silicon, block_req_template(i), "GET_BLOCK_REPLY");
 			}
 		}
 
