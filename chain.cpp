@@ -487,7 +487,9 @@ class Chain {
 
 			std::cout << "Decided on " << longest << "@" << hash << "\n";
 
+			#ifndef COMP_CHAIN
 			get_blocks(longest, agree_peers);
+			#endif
 		}
 
 		// Create a brand new gossip and send it to the main server
@@ -677,6 +679,14 @@ class Chain {
 						size_t num_filled = count_requests();
 
 						std::cout << num_filled << "/" << reqs.size() << " Requests Filled\n";
+
+						if (filled.done) {
+							if (filled.response["height"] > chain.size()) {
+								chain = std::vector<Block>(filled.response["height"]);
+								global_last_hash = filled.response["hash"];
+								workers.announce_hash(global_last_hash);
+							}
+						}
 					} else {
 						if (filled.done) { // since check_requests returns an empty request if none were filled, done will be false
 							// std::cout << reqs.size() << " Requests Left\n";
