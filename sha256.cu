@@ -136,10 +136,10 @@ void HashContext::update(const char incoming[], size_t len) {
 
 __host__ __device__
 void HashContext::update(size_t offset) {
-	for (size_t i = 0; i < sizeof(size_t) * 2; ++i) {
-		data[datalen] = 'A' + (offset & 0xF);
+	for (size_t i = 0; i < sizeof(size_t); ++i) {
+		data[datalen] = 'A' + (offset & 0xFF);
 		datalen++;
-		offset >>= 4;
+		offset >>= 8;
 		if (datalen == 64) {
 			transform();
 			bitlen += 512;
@@ -195,14 +195,10 @@ bool HashContext::test(size_t difficulty) {
 	// Pad whatever data is left in the buffer.
 	if (datalen < 56) {
 		data[i++] = 0x80;
-		while (i < 56) {
-			data[i++] = 0x00;
-		}
+		memset(&data[i], 0, 56 - i);
 	} else {
 		data[i++] = 0x80;
-		while (i < 64) {
-			data[i++] = 0x00;
-		}
+		memset(&data[i], 0, 64 - i);
 		transform();
 		memset(data, 0, 56);
 	}
@@ -230,9 +226,7 @@ bool HashContext::test(size_t difficulty) {
 
 	int rem_zero = difficulty & 7;
 
-	if ((state[7 - j] & ((1 << (rem_zero * 4)) - 1)) != 0) return false;
-
-	return true;
+	return ((state[7 - j] & ((1 << (rem_zero * 4)) - 1)) == 0);
 
 	/**
 	 * [i + j * 4] = [j] >> (24 - i * 8)

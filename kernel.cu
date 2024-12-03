@@ -9,7 +9,7 @@ constexpr auto difficulty = 8;
 #else
 constexpr auto difficulty = 9;
 #endif
-constexpr auto nonce_max = 16;
+constexpr auto nonce_max = 8;
 
 // Wrapper for managed memory objects
 template <typename T>
@@ -49,7 +49,6 @@ std::ostream& operator<<(std::ostream& os, const std::array<BYTE, len>& data) {
 
 hash_t hash_block(const string& last_hash, const Block& block) {
 	string input = last_hash;
-	// input += "Ben's GPU";
 	input += block.minedBy;
 
 	for (auto&& msg : block.messages) {
@@ -86,15 +85,13 @@ __global__
 void test_nonce(
 	HashContext ctx,
 	const size_t offset,
-	size_t* golden,
-	bool* found
+	size_t* golden
 ) {
 	size_t thread = blockIdx.x * blockDim.x + threadIdx.x + offset * gridDim.x * blockDim.x;
 	ctx.update(thread);
 
 	if (!ctx.test(difficulty)) return;
 
-	*found = true;
 	*golden = thread;
 }
 
@@ -118,6 +115,8 @@ void Finder::set_block(Block& block) {
 }
 
 void Finder::set_last_hash(const string last_hash) {
+	// Skip if it's the same, unless it's blank, because then it's probably the first call
+	if (data->last_hash == last_hash && last_hash != "") return;
 	data->last_hash = last_hash;
 	data->ctx = HashContext{};
 	string input = last_hash;
@@ -147,9 +146,8 @@ void Finder::find_nonce(size_t idx) {
 
 void Finder::find_nonce(const std::function<void(void)> refresher, size_t idx) {
 	Managed<size_t> dev_golden{};
-	Managed<bool> dev_found{};
-	bool found = false;
-	dev_found = &found;
+	size_t golden = 0;
+	dev_golden = &golden;
 	Managed<size_t> dev_loops{};
 	size_t loops = idx * 0xFFFFFF; // Just so all the miners aren't checking the same things
 
@@ -157,12 +155,11 @@ void Finder::find_nonce(const std::function<void(void)> refresher, size_t idx) {
 	cudaEventCreate(&start);
 	cudaEventCreate(&stop);
 	cudaEventRecord(start);
-	while (found == false) {
+	while (golden == 0) {
 		dev_loops = &loops;
-		test_nonce<<<1024, 512>>>(*(data->dev_ctx), *dev_loops, dev_golden, dev_found);
+		test_nonce<<<1024, 512>>>(*(data->dev_ctx), *dev_loops, dev_golden);
 		++loops;
-		cudaMemcpy(&found, dev_found, sizeof(bool), cudaMemcpyDeviceToHost);
-		cudaDeviceSynchronize();
+		cudaMemcpy(&golden, dev_golden, sizeof(size_t), cudaMemcpyDeviceToHost);
 
 		// Only run the io check every 4096 loops
 		if ((loops & 0xFFF) == 0) {
@@ -177,23 +174,17 @@ void Finder::find_nonce(const std::function<void(void)> refresher, size_t idx) {
 	std::cout << "Finding the nonce took: " << time << " ms\n";
 	printf("Loops: %lu\n", loops);
 	std::cout << time / loops << "ms/loop\n";
-
-	size_t golden;
-	cudaMemcpy(&golden, dev_golden, sizeof(size_t), cudaMemcpyDeviceToHost);
+	cudaDeviceSynchronize();
 
 	std::array<BYTE, nonce_max> nonce;
 	for (int i = 0; i < nonce_max; ++i) {
-		nonce[i] = 'A' + (golden & 0xF);
-		golden >>= 4;
+		nonce[i] = 'A' + (golden & 0xFF);
+		golden >>= 8;
 	}
-
-	// std::cout << nonce << "\n";
-	// std::cout << std::dec << nonce.size() << "\n";
 
 	data->curr.nonce = std::string{reinterpret_cast<char*>(nonce.data())};
 	data->curr.nonce = data->curr.nonce.substr(0, nonce_max);
 	std::cout << data->curr.nonce << "\n";
-	// std::cout << std::dec << data->curr.nonce.size() << "\n";
 	hash_t hash = hash_block(data->last_hash, data->curr);
 	data->curr.hash = hash_to_string(hash);
 }
