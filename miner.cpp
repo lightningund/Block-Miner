@@ -1,8 +1,6 @@
 #include <iostream>
 #include <array>
 
-#include "csha256.hpp"
-
 #include "types.hpp"
 
 #include "json.hpp"
@@ -16,74 +14,10 @@ using boost::asio::ip::tcp;
 
 #include "kernel.cuh"
 
-host_t my_host = "127.0.0.1";
-port_t my_port = 50002;
-name_t my_name = "Ben's GPU";
-
 boost::asio::io_context io_ctxt{};
-
-// Total time mining
-// Total time running
-// Average number of loops per nonce
-// Average time per nonce
-// Average time per loop (might be redundant?)
-// Total number mined
-// Max loops
-// Max time
-
-string host_hash_block(string last_hash, Block block) {
-	string input = last_hash;
-	input += block.minedBy;
-
-	for (auto&& msg : block.messages) {
-		input += msg;
-	}
-
-	uint64_t casted_stamp = static_cast<uint64_t>(block.timestamp);
-	char* stamp_chars = reinterpret_cast<char*>(&casted_stamp);
-	for (int i = 7; i >= 0; --i) {
-		input += stamp_chars[i];
-	}
-	input += block.nonce;
-
-	std::cout << "Hash Input: " << input << "\n";
-	std::cout << "Input Length: " << input.size() << "\n";
-	string hash = sha256(input);
-	std::cout << "Hash: " << hash << "\n";
-	std::cout << "Target Hash: " << block.hash << "\n";
-	return hash;
-}
 
 // Tests the hash on the very first block
 void test_hash() {
-	std::array<unsigned int, 32> fake_hash{};
-	std::array<unsigned int, 8> fake_state{
-		0x00112233,
-		0x44556677,
-		0x8899AABB,
-		0xCCDDEEFF,
-		0x00102030,
-		0x40506070,
-		0x8090A0B0,
-		0xC0D0E0F0
-	};
-
-	for (auto&& elem : fake_state) {
-		std::cout << std::hex << elem << ", ";
-	}
-	std::cout << "\n";
-
-	for (int j = 0; j < 8; ++j) {
-		for (int i = 0; i < 4; ++i) {
-			fake_hash[i + j * 4] = (fake_state[j] >> (24 - i * 8)) & 0xFF;
-		}
-	}
-
-	for (auto&& elem : fake_hash) {
-		std::cout << std::hex << std::setw(2) << std::setfill('0') << elem << ", ";
-	}
-	std::cout << "\n";
-
 	Block test_block{
 		.minedBy = "Prof!",
 		.messages = {"Keep it", "simple.", "Veni", "vidi", "vici"},
@@ -93,19 +27,9 @@ void test_hash() {
 		.hash = "75977fa09516d028befa0695e16c93be20271b66630236d38718e35700000000"
 	};
 
-	auto hash = hash_block("", test_block);
-	string hash_str;
-	for (auto byte : hash) {
-		std::cout << std::setfill('0') << std::setw(2) << std::hex << (unsigned int)byte;
-	}
-
-	std::cout << "\n" << test_block.hash << "\n";
-
 	Finder f{test_block};
 	f.set_last_hash("");
 	f.find_nonce();
-
-	host_hash_block("", test_block);
 }
 
 size_t get_small_stamp() {
@@ -223,7 +147,7 @@ int main(int argc, char* argv[]) {
 		// std::cout << "IO Polled";
 	};
 
-	chain.send(boost::asio::buffer("ayo uhhhhh"));
+	// chain.send(boost::asio::buffer("ayo uhhhhh"));
 
 	while (true) {
 		// for (auto& msg : curr_block.messages) {
