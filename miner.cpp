@@ -27,6 +27,16 @@ void test_hash() {
 		.hash = "75977fa09516d028befa0695e16c93be20271b66630236d38718e35700000000"
 	};
 
+	auto hash = hash_block("", test_block);
+	string hash_str;
+	for (auto byte : hash) {
+		std::cout << std::setfill('0') << std::setw(2) << std::hex << (unsigned int)byte;
+	}
+
+	std::cout << "\n" << test_block.hash << "\n";
+
+	std::cout << "Finding Test Nonce\n";
+
 	Finder f{test_block};
 	f.set_last_hash("");
 	f.find_nonce();
@@ -70,7 +80,7 @@ void listener(tcp::socket& chain, Finder& finder, std::array<char, 64>& buf) {
 }
 
 int main(int argc, char* argv[]) {
-	// test_hash();
+	test_hash();
 
 	if (argc < 2) {
 		LOG_ERROR("Please Give me a host idk what to do");

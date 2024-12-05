@@ -135,11 +135,11 @@ void HashContext::update(const char incoming[], size_t len) {
 }
 
 __host__ __device__
-void HashContext::update(size_t offset) {
-	for (size_t i = 0; i < sizeof(size_t); ++i) {
-		data[datalen] = 'A' + (offset & 0xFF);
+void HashContext::update(uint64_t offset) {
+	for (size_t i = 0; i < sizeof(uint64_t) * 2; ++i) {
+		data[datalen] = 'A' + (offset & 0xF);
 		datalen++;
-		offset >>= 8;
+		offset >>= 4;
 		if (datalen == 64) {
 			transform();
 			bitlen += 512;
@@ -190,17 +190,24 @@ void HashContext::digest(BYTE hash[]) {
 
 __host__ __device__
 bool HashContext::test(size_t difficulty) {
-	WORD i = datalen;
+	data[datalen] = 0x80;
 
 	// Pad whatever data is left in the buffer.
 	if (datalen < 56) {
-		data[i++] = 0x80;
-		memset(&data[i], 0, 56 - i);
+		// memset(&data[datalen + 1], 0, 55 - datalen);
+		for (int i = datalen + 1; i < 56; ++i) {
+			data[i] = 0;
+		}
 	} else {
-		data[i++] = 0x80;
-		memset(&data[i], 0, 64 - i);
+		// memset(&data[datalen + 1], 0, 63 - datalen);
+		for (int i = datalen + 1; i < 64; ++i) {
+			data[i] = 0;
+		}
 		transform();
-		memset(data, 0, 56);
+		// memset(data, 0, 56);
+		for (int k = 0; k < 56; ++k) {
+			data[k] = 0;
+		}
 	}
 
 	// Append to the padding the total message's length in bits and transform.

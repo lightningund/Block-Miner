@@ -31,7 +31,7 @@ struct HashContext {
 	void update(const char incoming[], size_t len);
 
 	__host__ __device__
-	void update(size_t offset);
+	void update(uint64_t offset);
 
 	__host__ __device__
 	void digest(BYTE hash[]);
