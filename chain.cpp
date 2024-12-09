@@ -174,7 +174,7 @@ class Chain {
 		bool add_block(Block b) {
 			if (!quick_check_block(b)) return false;
 			if (b.height != chain.size()) return false;
-			if (chain_verified && hash_block(chain[chain.size() - 1].hash, b) != b.hash) return false;
+			if (chain.size() > 0 && chain_verified && hash_block(chain[chain.size() - 1].hash, b) != b.hash) return false;
 			global_last_hash = b.hash;
 			chain.push_back(b);
 			workers.announce_hash(b.hash);
@@ -394,12 +394,14 @@ class Chain {
 		}
 
 		void get_blocks(size_t len, std::vector<Peer> agreers) {
+			#ifndef COMP_CHAIN
 			next_chain_check = get_now() + chain_check_time;
 			for (long i = len - 1; i >= 0; --i) {
 				for (auto& peer : agreers) {
 					make_request(peer, block_req_template(i), "GET_BLOCK_REPLY");
 				}
 			}
+			#endif
 		}
 
 		// Go through the chain and make a request for all the blocks we are missing
@@ -487,9 +489,7 @@ class Chain {
 
 			std::cout << "Decided on " << longest << "@" << hash << "\n";
 
-			#ifndef COMP_CHAIN
 			get_blocks(longest, agree_peers);
-			#endif
 		}
 
 		// Create a brand new gossip and send it to the main server
@@ -688,6 +688,7 @@ class Chain {
 							}
 						}
 					} else {
+						#ifndef COMP_CHAIN
 						if (filled.done) { // since check_requests returns an empty request if none were filled, done will be false
 							// std::cout << reqs.size() << " Requests Left\n";
 							if (filled.response_type == "GET_BLOCK_REPLY" || filled.response_type == "ANNOUNCE") {
@@ -706,6 +707,7 @@ class Chain {
 							// Clear out completed reqs
 							std::erase_if(reqs, [](Request r) { return r.done; });
 						}
+						#endif
 					}
 					#endif
 
