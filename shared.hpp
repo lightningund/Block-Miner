@@ -2,12 +2,21 @@
 
 #include <vector>
 #include <string>
+#include <iostream>
 using std::string;
 
 typedef unsigned char BYTE;
 typedef unsigned int WORD;
 
-#define LOG_ERROR(msg) std::cerr << "\033[31m" << msg << "\033[0m\n"
+template <typename... Args>
+inline void log_err(Args... args) {
+	((std::cerr << "\033[31m") << ... << args) << "\033[0m\n";
+}
+
+template <typename... Args>
+inline void log_warn(Args... args) {
+	((std::cerr << "\033[33m") << ... << args) << "\033[0m\n";
+}
 
 struct Block {
 	string minedBy;

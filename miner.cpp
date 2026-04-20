@@ -47,6 +47,10 @@ size_t get_small_stamp() {
 	return duration_cast<seconds>(get_now().time_since_epoch()).count();
 }
 
+static auto to_millis(timepoint t) {
+	return duration_cast<milliseconds>(t).count();
+}
+
 timepoint very_start;
 nanoseconds total_time;
 nanoseconds max_time;
@@ -63,7 +67,7 @@ void listener(tcp::socket& chain, Finder& finder, std::array<char, 64>& buf) {
 			return;
 		}
 		if (err) {
-			LOG_ERROR(err.message());
+			log_err(err.message());
 			listener(chain, finder, buf);
 			return;
 		}
@@ -80,10 +84,10 @@ void listener(tcp::socket& chain, Finder& finder, std::array<char, 64>& buf) {
 }
 
 int main(int argc, char* argv[]) {
-	test_hash();
+	// test_hash();
 
 	if (argc < 2) {
-		LOG_ERROR("Please Give me a host idk what to do");
+		log_err("Please give me a host idk what to do");
 		return -1;
 	}
 
@@ -118,25 +122,20 @@ int main(int argc, char* argv[]) {
 
 	std::cout << last_hash << "\n";
 
-	// Block curr_block{
-	// 	.minedBy = "Ben's GPU",
-	// 	.messages = {
-	// 		"According to all",
-	// 		"known laws of",
-	// 		"aviation, there is",
-	// 		"no way a bee should",
-	// 		"be able to fly. Its",
-	// 		"wings are too small",
-	// 		"to get its fat",
-	// 		"little body off the",
-	// 		"ground. The bee, of",
-	// 		"course, flies"
-	// 	}
-	// };
-
 	Block curr_block{
 		.minedBy = "Ben's GPU",
-		.messages = { "Sigma" }
+		.messages = {
+			"According to all",
+			"known laws of",
+			"aviation, there is",
+			"no way a bee should",
+			"be able to fly. Its",
+			"wings are too small",
+			"to get its fat",
+			"little body off the",
+			"ground. The bee, of",
+			"course, flies"
+		}
 	};
 
 	very_start = get_now();
@@ -160,9 +159,10 @@ int main(int argc, char* argv[]) {
 	// chain.send(boost::asio::buffer("ayo uhhhhh"));
 
 	while (true) {
-		// for (auto& msg : curr_block.messages) {
-		// 	std::random_shuffle(msg.begin(), msg.end());
-		// }
+		// Shuffle the messages so we get different blocks, just for fun
+		for (auto& msg : curr_block.messages) {
+			std::random_shuffle(msg.begin(), msg.end());
+		}
 
 		curr_block.timestamp = get_small_stamp();
 		finder.set_last_hash(last_hash);

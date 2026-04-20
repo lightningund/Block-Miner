@@ -27,8 +27,8 @@ void Sweatshop::check_for_volunteers() {
 				listen_for_gold(miners.size() - 1);
 			}
 		} catch (const std::exception& e) {
-			LOG_ERROR("Miner Accept");
-			LOG_ERROR(e.what());
+			log_err("Miner Accept");
+			log_err(e.what());
 		}
 
 		next_miner = nullptr;
@@ -48,8 +48,8 @@ void Sweatshop::listen_for_gold(size_t idx) {
 			rec = rec.substr(0, len);
 			found_cb(rec);
 		} catch (std::exception& err) {
-			LOG_ERROR("Miner Read");
-			LOG_ERROR(err.what());
+			log_err("Miner Read");
+			log_err(err.what());
 		}
 
 		listen_for_gold(idx);
@@ -85,7 +85,7 @@ void Sweatshop::announce_hash(std::string hash) {
 		try {
 			miner->send(buf);
 		} catch (const std::exception& err) {
-			LOG_ERROR(err.what());
+			log_err(err.what());
 		}
 	}
 

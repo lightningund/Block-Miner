@@ -91,28 +91,28 @@ static bool quick_check_block(const Block& b) {
 	if (b.height == -1) return false;
 	// Wrong number of zeroes
 	if (!b.hash.ends_with(difficulty)) {
-		LOG_ERROR("Not good enough hash");
+		log_err("Not good enough hash");
 		return false;
 	}
 	// Reported hash is the wrong length somehow
 	if (b.hash.length() != 64) {
-		LOG_ERROR("Fucked up hash");
+		log_err("Fucked up hash");
 		return false;
 	}
 	// Too many messages
 	if (b.messages.size() > 10) {
-		LOG_ERROR("Too many messages");
+		log_err("Too many messages");
 		return false;
 	}
 	// No messages
 	if (b.messages.size() == 0) {
-		LOG_ERROR("No Messages");
+		log_err("No Messages");
 		return false;
 	}
 	// Any messages that are too long
 	for (auto&& msg : b.messages) {
 		if (msg.length() > 20) {
-			LOG_ERROR("Message too long");
+			log_err("Message too long");
 			return false;
 		}
 	}
@@ -157,14 +157,14 @@ class Chain {
 			try {
 				Block b = chain.at(idx);
 				if (!quick_check_block(b)) throw std::runtime_error{"Invalid Block"};
-				// if (idx > 0) {
-				// 	if (chain[idx - 1].height != -1) {
-				// 		if (hash_block(chain[idx - 1].hash, b) != b.hash) throw "Reported Hash is Incorrect";
-				// 	}
-				// }
+				if (idx > 0) {
+					if (chain[idx - 1].height != -1) {
+						if (hash_block(chain[idx - 1].hash, b) != b.hash) throw "Reported Hash is Incorrect";
+					}
+				}
 			} catch(const std::exception& err) {
-				LOG_ERROR("Verifying " + std::to_string(idx));
-				LOG_ERROR(err.what());
+				log_err("Verifying " + std::to_string(idx));
+				log_err(err.what());
 				return false;
 			}
 
@@ -217,7 +217,7 @@ class Chain {
 				udp::endpoint new_ep = *udp_res.resolve({udp::v4(), host, std::to_string(port)});
 				add_peer(new_ep);
 			} catch (const std::exception& e) {
-				LOG_ERROR(e.what());
+				log_err(e.what());
 			}
 		}
 
@@ -317,7 +317,7 @@ class Chain {
 					throw std::runtime_error{"Empty Chain"};
 				}
 			} catch (const std::exception& e) {
-				LOG_ERROR(e.what());
+				log_err(e.what());
 				send(json{e.what()}, target);
 			}
 		}
@@ -381,8 +381,8 @@ class Chain {
 					last_hash = block.hash;
 					if (hash != block.hash) throw std::runtime_error("Wrong Hash");
 				} catch(const std::exception& e) {
-					LOG_ERROR(e.what());
-					LOG_ERROR("\n\n\nNOOOOOOO!! An error or exception or some kind of unexpected and unhandled circumstance!\n\n\n");
+					log_err(e.what());
+					log_err("\n\n\nNOOOOOOO!! An error or exception or some kind of unexpected and unhandled circumstance!\n\n\n");
 					LIES();
 				}
 			}
@@ -440,7 +440,7 @@ class Chain {
 								req.response["height"] = 0;
 							}
 						} catch (const std::exception& err) {
-							LOG_ERROR(err.what());
+							log_err(err.what());
 						}
 						break;
 					}
@@ -700,7 +700,7 @@ class Chain {
 										chain[b.height].height = -1;
 									}
 								} catch(const std::exception& e) {
-									LOG_ERROR(e.what());
+									log_err(e.what());
 								}
 							}
 
@@ -734,7 +734,7 @@ class Chain {
 						#endif
 					}
 				} catch(const std::exception& e) {
-					LOG_ERROR(e.what());
+					log_err(e.what());
 				}
 
 				main_recv();
@@ -770,7 +770,7 @@ class Chain {
 
 					if (added) announce_block(new_block);
 				} catch (const std::exception& err) {
-					LOG_ERROR(err.what());
+					log_err(err.what());
 				}
 
 				if (chain.size() > 0 && chain[chain.size() - 1].hash != "") {
@@ -812,7 +812,7 @@ class Chain {
 				try {
 					main_loop();
 				} catch(const std::exception& e) {
-					LOG_ERROR(e.what());
+					log_err(e.what());
 				}
 			}
 		}
