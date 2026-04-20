@@ -36,6 +36,7 @@
  * SUCH DAMAGE.
  */
 
+#include <cstdint>
 #include <cstring>
 #include <fstream>
 #include "csha256.hpp"
