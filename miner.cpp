@@ -1,14 +1,9 @@
 #include <iostream>
 #include <array>
 #include "types.hpp"
+#include "kernel.cuh"
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Block, minedBy, messages, nonce, height, hash, timestamp)
-
-// For intellisense
-#include <boost/asio.hpp>
-using boost::asio::ip::tcp;
-
-#include "kernel.cuh"
 
 boost::asio::io_context io_ctxt{};
 
@@ -23,13 +18,9 @@ void test_hash() {
 		.hash = "75977fa09516d028befa0695e16c93be20271b66630236d38718e35700000000"
 	};
 
-	auto hash = hash_block("", test_block);
-	string hash_str;
-	for (auto byte : hash) {
-		std::cout << std::setfill('0') << std::setw(2) << std::hex << (unsigned int)byte;
-	}
-
-	std::cout << "\n" << test_block.hash << "\n";
+	// Verify that the hash function works correctly
+	std::cout << "Reference:  " << test_block.hash << "\n";
+	std::cout << "Calculated: " << hash_block("", test_block) << "\n";
 
 	std::cout << "Finding Test Nonce\n";
 
@@ -39,12 +30,7 @@ void test_hash() {
 }
 
 size_t get_small_stamp() {
-	using namespace std::chrono;
 	return duration_cast<seconds>(get_now().time_since_epoch()).count();
-}
-
-static auto to_millis(auto t) {
-	return duration_cast<milliseconds>(t).count();
 }
 
 timepoint very_start;
@@ -152,7 +138,7 @@ int main(int argc, char* argv[]) {
 		// std::cout << "IO Polled";
 	};
 
-	// chain.send(boost::asio::buffer("ayo uhhhhh"));
+	chain.send(boost::asio::buffer("ayo uhhhhh"));
 
 	while (true) {
 		// Shuffle the messages so we get different blocks, just for fun

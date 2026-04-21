@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 #include <vector>
 #include <string>
 #include <iostream>
@@ -16,6 +17,14 @@ inline void log_err(Args... args) {
 template <typename... Args>
 inline void log_warn(Args... args) {
 	((std::cerr << "\033[33m") << ... << args) << "\033[0m\n";
+}
+
+template<size_t len>
+std::ostream& operator<<(std::ostream& os, const std::array<BYTE, len>& data) {
+	for (auto byte : data) {
+		os << std::setfill('0') << std::setw(2) << std::hex << (unsigned int)byte;
+	}
+	return os;
 }
 
 struct Block {

@@ -35,11 +35,15 @@ constexpr auto max_resend = 100; // Max number of messages to re-send at once
 constexpr auto chain_check_time = 30min;
 
 inline timepoint get_now() {
-	return std::chrono::system_clock::now();
+	return system_clock::now();
+}
+
+inline stamp_t to_millis(auto t) {
+	return duration_cast<milliseconds>(t).count();
 }
 
 inline stamp_t get_timestamp() {
-	return duration_cast<milliseconds>(get_now().time_since_epoch()).count();
+	return to_millis(get_now().time_since_epoch());
 }
 
 inline msg_id_t get_msg_id() {

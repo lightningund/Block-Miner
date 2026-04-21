@@ -64,7 +64,7 @@ void Sweatshop::listen_for_gold() {
 
 Sweatshop::Sweatshop() : Sweatshop{[](std::string _){}} {}
 
-Sweatshop::Sweatshop(const FoundCallback cb) : found_cb{cb}, acceptor{io_ctxt, tcp::endpoint{tcp::v4(), 50001}} {
+Sweatshop::Sweatshop(const FoundCallback cb) : acceptor{io_ctxt, tcp::endpoint{tcp::v4(), 50001}}, found_cb{cb} {
 	check_for_volunteers();
 }
 

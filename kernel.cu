@@ -53,14 +53,6 @@ struct Managed {
 	}
 };
 
-template<size_t len>
-std::ostream& operator<<(std::ostream& os, const std::array<BYTE, len>& data) {
-	for (auto byte : data) {
-		os << std::setfill('0') << std::setw(2) << std::hex << (unsigned int)byte;
-	}
-	return os;
-}
-
 hash_t hash_block(const string& last_hash, const Block& block) {
 	string input = last_hash;
 	input += block.minedBy;

@@ -1,10 +1,8 @@
 #pragma once
-
 #include <array>
 #include <string>
 #include <vector>
 #include <functional>
-
 #include "shared.hpp"
 
 using std::string;
