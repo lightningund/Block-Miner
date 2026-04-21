@@ -5,7 +5,7 @@
 #include "sha256.cuh"
 
 #ifndef COMP_CHAIN
-constexpr auto difficulty = 8;
+constexpr auto difficulty = 6;
 #else
 constexpr auto difficulty = 9;
 #endif

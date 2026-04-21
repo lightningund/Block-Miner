@@ -1,7 +1,6 @@
 #pragma once
-#include <string>
 #include <array>
-#include <vector>
+#include <cstddef>
 
 using BYTE = unsigned char;
 using WORD = unsigned int;

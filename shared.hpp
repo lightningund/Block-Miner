@@ -1,12 +1,12 @@
 #pragma once
-
 #include <vector>
 #include <string>
 #include <iostream>
+
 using std::string;
 
-typedef unsigned char BYTE;
-typedef unsigned int WORD;
+using BYTE = unsigned char;
+using WORD = unsigned int;
 
 template <typename... Args>
 inline void log_err(Args... args) {

@@ -47,7 +47,7 @@ size_t get_small_stamp() {
 	return duration_cast<seconds>(get_now().time_since_epoch()).count();
 }
 
-static auto to_millis(timepoint t) {
+static auto to_millis(auto t) {
 	return duration_cast<milliseconds>(t).count();
 }
 
@@ -84,7 +84,7 @@ void listener(tcp::socket& chain, Finder& finder, std::array<char, 64>& buf) {
 }
 
 int main(int argc, char* argv[]) {
-	// test_hash();
+	test_hash();
 
 	if (argc < 2) {
 		log_err("Please give me a host idk what to do");
@@ -176,6 +176,7 @@ int main(int argc, char* argv[]) {
 		total_time += dur;
 		auto runtime = get_now() - very_start;
 		std::cout << "\nAverage block time: " << duration_cast<milliseconds>(total_time / num_blocks).count()
+			// << "ms\nMax block time: " << to_millis(max_time)
 			<< "ms\nMax block time: " << duration_cast<milliseconds>(max_time).count()
 			<< "ms\nMin block time: " << duration_cast<milliseconds>(min_time).count()
 			<< "ms\nTotal blocks: " << num_blocks
