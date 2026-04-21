@@ -11,13 +11,9 @@ struct HashContext {
 	HashContext();
 
 	void update(const BYTE incoming[], size_t len);
-
 	void update(const char incoming[], size_t len);
-
 	void update(size_t offset);
-
 	void digest(BYTE hash[]);
-
 	bool test(size_t difficulty);
 
 private:

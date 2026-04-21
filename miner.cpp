@@ -1,10 +1,6 @@
 #include <iostream>
 #include <array>
-
 #include "types.hpp"
-
-#include "json.hpp"
-using json = nlohmann::json;
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Block, minedBy, messages, nonce, height, hash, timestamp)
 

@@ -17,9 +17,7 @@ struct Managed {
 	T* raw;
 	size_t size;
 
-	Managed() : size{sizeof(T)} {
-		cudaMallocManaged(&raw, size);
-	}
+	Managed() : Managed{sizeof(T)} {}
 
 	// Takes the size as a number of bytes
 	Managed(size_t size) : size{size} {
@@ -34,8 +32,24 @@ struct Managed {
 		cudaMemcpy(raw, ptr, size, cudaMemcpyHostToDevice);
 	}
 
+	void operator=(const T dat) {
+		cudaMemcpy(raw, &dat, size, cudaMemcpyHostToDevice);
+	}
+
 	operator T*() {
 		return raw;
+	}
+
+	operator T() const {
+		T dat;
+		cudaMemcpy(&dat, raw, sizeof(T), cudaMemcpyDeviceToHost);
+		return dat;
+	}
+
+	T get() const {
+		T dat;
+		cudaMemcpy(&dat, raw, sizeof(T), cudaMemcpyDeviceToHost);
+		return dat;
 	}
 };
 
@@ -146,8 +160,7 @@ void Finder::find_nonce(size_t idx) {
 
 void Finder::find_nonce(const std::function<void(void)> refresher, size_t idx) {
 	Managed<bool> dev_found{};
-	bool found = false;
-	dev_found = &found;
+	dev_found = false;
 	Managed<uint64_t> dev_golden{};
 	uint64_t loops = idx * 0xFFFFFF; // Just so all the miners aren't checking the same things
 
@@ -155,11 +168,10 @@ void Finder::find_nonce(const std::function<void(void)> refresher, size_t idx) {
 	cudaEventCreate(&start);
 	cudaEventCreate(&stop);
 	cudaEventRecord(start);
-	while (!found) {
+	while (!dev_found.get()) {
 		++loops;
 		test_nonce<<<1024, 512>>>(data->ctx, loops, dev_golden, dev_found);
 		cudaDeviceSynchronize();
-		cudaMemcpy(&found, dev_found, sizeof(bool), cudaMemcpyDeviceToHost);
 		cudaDeviceSynchronize();
 
 		// Only run the io check every 4096 loops
@@ -176,8 +188,7 @@ void Finder::find_nonce(const std::function<void(void)> refresher, size_t idx) {
 	std::cout << "Loops: " << loops << "\n";
 	std::cout << time / loops << "ms/loop\n";
 
-	uint64_t golden;
-	cudaMemcpy(&golden, dev_golden, sizeof(uint64_t), cudaMemcpyDeviceToHost);
+	uint64_t golden = dev_golden;
 
 	std::array<BYTE, nonce_max> nonce;
 	for (int i = 0; i < nonce_max; ++i) {

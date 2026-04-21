@@ -34,20 +34,19 @@ constexpr auto consensus_time = 5min;
 constexpr auto max_resend = 100; // Max number of messages to re-send at once
 constexpr auto chain_check_time = 30min;
 
-static inline timepoint get_now() {
+inline timepoint get_now() {
 	return std::chrono::system_clock::now();
 }
 
-static inline stamp_t get_timestamp() {
-	using namespace std::chrono;
+inline stamp_t get_timestamp() {
 	return duration_cast<milliseconds>(get_now().time_since_epoch()).count();
 }
 
-static inline msg_id_t get_msg_id() {
+inline msg_id_t get_msg_id() {
 	return std::to_string(get_timestamp());
 }
 
-static inline bool same_ep(const udp::endpoint& a, const udp::endpoint& b) {
+inline bool same_ep(const udp::endpoint& a, const udp::endpoint& b) {
 	return a.address() == b.address() && a.port() == b.port();
 }
 
