@@ -13,33 +13,15 @@
 #include <map>
 #include <chrono>
 #include <utility>
-
-#include "csha256.hpp"
-
 #include "types.hpp"
-
-#include "json.hpp"
-using json = nlohmann::json;
-
-// For intellisense
-#include <boost/asio.hpp>
-using boost::asio::ip::udp;
-using boost::asio::ip::tcp;
-
+#include "csha256.hpp"
 #include "sweatshop.hpp"
 
-#ifdef COMP_CHAIN
-std::vector<std::pair<string, string>> known_hosts{{"192.168.102.145", "8999"}, /*{"192.168.102.146", "8999"}, */{"192.168.102.145", "8997"}, {"192.168.102.146", "8997"}};
-constexpr auto difficulty = "000000000";
-#else
 std::vector<std::pair<string, string>> known_hosts{{"silicon.cs.umanitoba.ca", "8999"}, {"eagle.cs.umanitoba.ca", "8999"}, {"grebe.cs.umanitoba.ca", "8999"}, {"hawk.cs.umanitoba.ca", "8999"}};
 constexpr auto difficulty = "00000000";
-#endif
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Block, minedBy, messages, nonce, height, hash, timestamp)
-
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Gossip, host, port, name, id)
-
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(GossipReply, host, port, name)
 
 host_t my_host = "192.168.102.146";
@@ -349,7 +331,6 @@ class Chain {
 
 		// Called when we find an erroneous block while verifying
 		void LIES() {
-			#ifndef COMP_CHAIN
 			chain_verified = false;
 			chain.clear();
 			// Say that everyone who suggested this chain was a dirty liar
@@ -359,7 +340,6 @@ class Chain {
 			agree_peers.clear();
 			reqs.clear();
 			request_stats();
-			#endif
 		}
 
 		void verify_chain() {
@@ -394,14 +374,12 @@ class Chain {
 		}
 
 		void get_blocks(size_t len, std::vector<Peer> agreers) {
-			#ifndef COMP_CHAIN
 			next_chain_check = get_now() + chain_check_time;
 			for (long i = len - 1; i >= 0; --i) {
 				for (auto& peer : agreers) {
 					make_request(peer, block_req_template(i), "GET_BLOCK_REPLY");
 				}
 			}
-			#endif
 		}
 
 		// Go through the chain and make a request for all the blocks we are missing
@@ -615,7 +593,6 @@ class Chain {
 				}
 			}
 
-			#ifndef EVIL_MODE
 			size_t sent = 0;
 
 			// Re-send requests we haven't received responses to
@@ -651,7 +628,6 @@ class Chain {
 					verify_chain();
 				}
 			}
-			#endif
 		}
 
 		void main_recv() {
@@ -673,7 +649,6 @@ class Chain {
 
 					json incoming = json::parse(recv_receipt.msg);
 
-					#ifndef EVIL_MODE
 					Request filled = check_requests(incoming, recv_receipt.sender);
 					if (in_consensus) {
 						size_t num_filled = count_requests();
@@ -688,7 +663,6 @@ class Chain {
 							}
 						}
 					} else {
-						#ifndef COMP_CHAIN
 						if (filled.done) { // since check_requests returns an empty request if none were filled, done will be false
 							// std::cout << reqs.size() << " Requests Left\n";
 							if (filled.response_type == "GET_BLOCK_REPLY" || filled.response_type == "ANNOUNCE") {
@@ -707,9 +681,7 @@ class Chain {
 							// Clear out completed reqs
 							std::erase_if(reqs, [](Request r) { return r.done; });
 						}
-						#endif
 					}
-					#endif
 
 					if (incoming["type"] == "GOSSIP") {
 						process_gossip(incoming.template get<Gossip>());
@@ -719,19 +691,15 @@ class Chain {
 						std::cout << "OOOO Sending stats\n";
 						send_stats(recv_receipt.sender);
 					} else if (incoming["type"] == "ANNOUNCE") {
-						#ifndef EVIL_MODE
 						add_block(incoming.template get<Block>());
-						#endif
 					} else if (incoming["type"] == "GET_BLOCK") {
 						get_block(incoming["height"], recv_receipt.sender);
 					} else if (incoming["type"] == "CONSENSUS") {
-						#ifndef EVIL_MODE
 						if (!in_consensus) {
 							// It's probably been a while, lets give them another chance
 							wrong_peers.clear();
 							request_stats();
 						}
-						#endif
 					}
 				} catch(const std::exception& e) {
 					log_err(e.what());
@@ -760,7 +728,7 @@ class Chain {
 
 	public:
 		Chain(int num_miners) :
-			workers{[this](string data){
+			workers{[this](string data) {
 				std::cout << data << "\n";
 				try {
 					json block = json::parse(data);
@@ -778,12 +746,10 @@ class Chain {
 				}
 			}}
 		{
-			#ifndef COMP_CHAIN
 			my_host = boost::asio::ip::host_name();
 			std::cout << "Our Address: " << my_host << "\n";
 			udp::endpoint public_ep = *udp_res.resolve({udp::v4(), my_host, std::to_string(my_port)});
 			my_host = public_ep.address().to_string();
-			#endif
 			std::cout << "Our Address: " << my_host << "\n";
 			std::cout << "Our Port: " << my_port << "\n";
 
@@ -793,19 +759,8 @@ class Chain {
 			}
 
 			make_gossip();
-
-			#ifndef EVIL_MODE
-				#ifndef COMP_CHAIN
-					collect_peers();
-				#endif
-				request_stats();
-			#else
-				in_consensus = false;
-				chain_verified = true;
-				chain = std::vector<Block>();
-				workers.announce_hash("");
-			#endif
-
+			collect_peers();
+			request_stats();
 			main_recv();
 
 			while (true) {

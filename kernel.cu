@@ -1,6 +1,5 @@
 #include <string>
 #include <iostream>
-#include <iomanip>
 #include "kernel.cuh"
 #include "sha256.cuh"
 
