@@ -1,10 +1,13 @@
 CPPC := g++
+MSVCC := cl
 CUDAC := nvcc
 CPPFLAGS := -std=c++23 -Wall -O3 -Wno-sign-compare
+MSVCFLAGS := /std:c++latest /EHsc
 CUDAFLAGS := --expt-relaxed-constexpr -O3
 
 CPPSRCS := $(wildcard *.cpp)
 CPPOBJS := $(CPPSRCS:.cpp=.o)
+MSVCOBJS := $(CPPSRCS:.cpp=.obj)
 CUDASRCS := $(wildcard *.cu)
 CUDAOBJS := $(CUDASRCS:.cu=.o)
 
@@ -12,6 +15,10 @@ all: chain miner cpu_miner
 
 chain: chain.o csha256.o sweatshop.o
 	$(CPPC) $^ -o chain.out $(CPPFLAGS)
+
+win_chain: MSVCFLAGS += /I"D:/CS_ALIAS/C++/@LIBS/MSVC/x64/boost_1_91_0/"
+win_chain: chain.obj csha256.obj sweatshop.obj
+	$(MSVC) $^ $(MSVCFLAGS) /Fe:win_chain.exe
 
 miner_demo: CPPFLAGS += -DSTANDALONE
 miner_demo: chain.o csha256.o sweatshop.o
@@ -31,6 +38,9 @@ profiler: profile_miner.o kernel.o sha256.o
 
 $(CPPOBJS): %.o: %.cpp
 	$(CPPC) $^ -o $@ -c $(CPPFLAGS)
+
+$(MSVCOBJS): %.obj: %.cpp
+	$(MSVCC) $^ /c /Fo:$@ $(MSVCFLAGS)
 
 $(CUDAOBJS): %.o: %.cu
 	$(CUDAC) $^ -o $@ -dc $(CUDAFLAGS)
