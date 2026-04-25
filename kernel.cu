@@ -177,7 +177,7 @@ void Finder::find_nonce(const std::function<void(void)> refresher, size_t idx) {
 
 	uint64_t golden = dev_golden;
 
-	std::array<BYTE, nonce_max> nonce;
+	std::array<Byte, nonce_max> nonce;
 	for (int i = 0; i < nonce_max; ++i) {
 		nonce[i] = 'A' + (golden & 0xF);
 		golden >>= 4;

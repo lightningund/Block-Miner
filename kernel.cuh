@@ -6,7 +6,7 @@
 #include "shared.hpp"
 
 using std::string;
-using hash_t = std::array<BYTE, 32>;
+using hash_t = std::array<Byte, 32>;
 
 struct FinderData;
 

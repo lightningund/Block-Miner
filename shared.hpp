@@ -7,8 +7,8 @@
 
 using std::string;
 
-using BYTE = unsigned char;
-using WORD = unsigned int;
+using Byte = unsigned char;
+using Word = unsigned int;
 
 template <typename... Args>
 inline void log_err(Args... args) {
@@ -21,7 +21,7 @@ inline void log_warn(Args... args) {
 }
 
 template<size_t len>
-std::ostream& operator<<(std::ostream& os, const std::array<BYTE, len>& data) {
+std::ostream& operator<<(std::ostream& os, const std::array<Byte, len>& data) {
 	for (auto byte : data) {
 		os << std::setfill('0') << std::setw(2) << std::hex << (unsigned int)byte;
 	}

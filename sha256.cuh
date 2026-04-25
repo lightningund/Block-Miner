@@ -25,7 +25,7 @@ struct HashContext {
 	HashContext();
 
 	__host__ __device__
-	void update(const BYTE incoming[], size_t len);
+	void update(const Byte incoming[], size_t len);
 
 	__host__ __device__
 	void update(const char incoming[], size_t len);
@@ -34,16 +34,16 @@ struct HashContext {
 	void update(uint64_t offset);
 
 	__host__ __device__
-	void digest(BYTE hash[]);
+	void digest(Byte hash[]);
 
 	__host__ __device__
 	bool test(size_t difficulty);
 
 private:
-	BYTE data[64];
-	WORD datalen;
+	Byte data[64];
+	Word datalen;
 	unsigned long long bitlen;
-	WORD state[8];
+	Word state[8];
 
 	__host__ __device__
 	__forceinline__
