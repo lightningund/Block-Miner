@@ -16,9 +16,9 @@ all: chain miner cpu_miner
 chain: chain.o csha256.o sweatshop.o
 	$(CPPC) $^ -o chain.out $(CPPFLAGS)
 
-win_chain: MSVCFLAGS += /I"D:/CS_ALIAS/C++/@LIBS/MSVC/x64/boost_1_91_0/"
-win_chain: chain.obj csha256.obj sweatshop.obj
-	$(MSVC) $^ $(MSVCFLAGS) /Fe:win_chain.exe
+winchain: MSVCFLAGS += /ID:/CS_ALIAS/C++/@LIBS/MSVC/x64/boost_1_91_0/
+winchain: chain.obj csha256.obj sweatshop.obj
+	$(MSVCC) $^ $(MSVCFLAGS) /Fe:chain.exe
 
 miner_demo: CPPFLAGS += -DSTANDALONE
 miner_demo: chain.o csha256.o sweatshop.o

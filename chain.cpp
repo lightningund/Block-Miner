@@ -664,7 +664,7 @@ class Chain {
 
 						if (filled.done) {
 							if (filled.response["height"] > chain.size()) {
-								chain = std::vector<Block>(filled.response["height"]);
+								chain = filled.response["height"];
 								global_last_hash = filled.response["hash"];
 								workers.announce_hash(global_last_hash);
 							}
