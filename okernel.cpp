@@ -21,14 +21,6 @@ constexpr auto nonce_max = 16;
 
 constexpr auto test_loops = 56;
 
-template<size_t len>
-std::ostream& operator<<(std::ostream& os, const std::array<BYTE, len>& data) {
-	for (auto byte : data) {
-		os << std::setfill('0') << std::setw(2) << std::hex << (unsigned int)byte;
-	}
-	return os;
-}
-
 hash_t hash_block(const string& last_hash, const Block& block) {
 	string input = last_hash;
 	// input += "Ben's GPU";
