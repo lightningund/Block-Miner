@@ -1,22 +1,18 @@
-// BREAK IN CASE OF WRONG CHAIN:
-// echo '{"type":"CONSENSUS"}' | nc -u 127.0.0.1 8470
-// (From the ember server itself)
-
 #include <cstdlib>
 #include <ctime>
 #include <iostream>
-#include <span>
 #include <array>
 #include <vector>
 #include <unordered_set>
 #include <map>
-#include <chrono>
 #include <utility>
 #include "types.hpp"
 #include "csha256.hpp"
 #include "sweatshop.hpp"
 
-std::vector<std::pair<string, string>> known_hosts{{"silicon.cs.umanitoba.ca", "8999"}, {"eagle.cs.umanitoba.ca", "8999"}, {"grebe.cs.umanitoba.ca", "8999"}, {"hawk.cs.umanitoba.ca", "8999"}};
+// Original hosts during the class
+// std::vector<std::pair<string, string>> known_hosts{{"silicon.cs.umanitoba.ca", "8999"}, {"eagle.cs.umanitoba.ca", "8999"}, {"grebe.cs.umanitoba.ca", "8999"}, {"hawk.cs.umanitoba.ca", "8999"}};
+std::vector<std::pair<string, string>> known_hosts{};
 constexpr auto difficulty = "00000000";
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Block, minedBy, messages, nonce, height, hash, timestamp)
@@ -734,7 +730,7 @@ class Chain {
 		}
 
 	public:
-		Chain(int num_miners) :
+		Chain() :
 			workers{[this](string data) {
 				std::cout << data << "\n";
 				try {
@@ -781,14 +777,17 @@ class Chain {
 };
 
 int main(int argc, char* argv[]) {
-	int num_miners = 1;
 	if (argc > 1) {
-		num_miners = std::atoi(argv[1]);
+		my_port = std::atoi(argv[1]);
+	}
+
+	for (int i = 2; i < argc; ++i) {
+		known_hosts.push_back({"127.0.0.1", argv[i]});
 	}
 
 	std::srand(std::time(nullptr));
 
-	Chain chain{num_miners};
+	Chain chain{};
 
 	return 0;
 }
