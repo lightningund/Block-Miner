@@ -5,7 +5,17 @@
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Block, minedBy, messages, nonce, height, hash, timestamp)
 
+boost::system::error_code err;
 boost::asio::io_context io_ctxt{};
+std::array<char, 1024> buf;
+
+timepoint very_start;
+nanoseconds total_time;
+nanoseconds max_time;
+nanoseconds min_time;
+size_t num_blocks;
+
+string last_hash;
 
 // Tests the hash on the very first block
 void test_hash() {
@@ -33,14 +43,6 @@ size_t get_small_stamp() {
 	return duration_cast<seconds>(get_now().time_since_epoch()).count();
 }
 
-timepoint very_start;
-nanoseconds total_time;
-nanoseconds max_time;
-nanoseconds min_time;
-size_t num_blocks;
-
-string last_hash;
-
 void listener(tcp::socket& chain, Finder& finder, std::array<char, 64>& buf) {
 	boost::asio::async_read(chain, boost::asio::buffer(buf), [&](const boost::system::error_code& err, size_t len) {
 		if (len == 0) {
@@ -65,8 +67,16 @@ void listener(tcp::socket& chain, Finder& finder, std::array<char, 64>& buf) {
 	});
 }
 
+string read(tcp::socket& sock) {
+	size_t len = sock.read_some(boost::asio::buffer(buf), err);
+	std::cout << "Read " << len << " bytes\n";
+
+	string resp{buf.data()};
+	return resp.substr(0, len);
+}
+
 int main(int argc, char* argv[]) {
-	test_hash();
+	// test_hash();
 
 	if (argc < 2) {
 		log_err("Please give me a host idk what to do");
@@ -75,30 +85,33 @@ int main(int argc, char* argv[]) {
 
 	std::srand(std::time(nullptr));
 
+	std::cout << "Connecting to " << argv[1] << "\n";
+
 	tcp::resolver resolver{io_ctxt};
 	auto points = resolver.resolve(argv[1], "50001");
 	tcp::socket chain{io_ctxt};
 	boost::asio::connect(chain, points);
 
-	std::array<char, 1024> buf;
-	boost::system::error_code err;
+	// size_t len = chain.read_some(boost::asio::buffer(buf), err);
+	// std::cout << "Read " << len << " bytes from chain\n";
+	// string resp{buf.data()};
+	// resp = resp.substr(0, len);
+	// std::cout << resp << "\n";
+	// size_t idx = std::stoi(resp);
 
-	size_t len = chain.read_some(boost::asio::buffer(buf), err);
+	// string resp = read(chain);
 
-	string resp{buf.data()};
-	resp = resp.substr(0, len);
-
-	std::cout << resp << "\n";
-	size_t idx = std::stoi(resp);
+	size_t idx = 0;
 
 	string msg = "Sup hoe";
 	chain.send(boost::asio::buffer(msg));
 
 	// std::cout << "Waiting for last hash\n";
 	// len = chain.read_some(boost::asio::buffer(buf), err);
-
 	// last_hash = string{buf.data()};
 	// last_hash = last_hash.substr(0, len);
+
+	// last_hash = read(chain);
 
 	last_hash = "";
 
@@ -137,8 +150,6 @@ int main(int argc, char* argv[]) {
 		io_ctxt.poll();
 		// std::cout << "IO Polled";
 	};
-
-	chain.send(boost::asio::buffer("ayo uhhhhh"));
 
 	while (true) {
 		// Shuffle the messages so we get different blocks, just for fun

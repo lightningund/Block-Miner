@@ -4,6 +4,7 @@
 static boost::asio::io_context io_ctxt{};
 
 void Sweatshop::check_for_volunteers() {
+	std::cout << "Sweatshop Address: " << boost::asio::ip::host_name() << "\n";
 	next_miner = new tcp::socket{io_ctxt};
 	std::cout << "Going Diddy mode (Looking for a miner)\n";
 	acceptor.async_accept(*next_miner, [this](const boost::system::error_code& err) {
