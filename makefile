@@ -1,6 +1,6 @@
 CPPC := g++
 CUDAC := nvcc
-CPPFLAGS := -std=c++23 -Wall -O3
+CPPFLAGS := -std=c++23 -Wall -O3 -Wno-sign-compare
 CUDAFLAGS := --expt-relaxed-constexpr -O3
 
 CPPSRCS := $(wildcard *.cpp)

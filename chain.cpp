@@ -2,7 +2,6 @@
 // echo '{"type":"CONSENSUS"}' | nc -u 127.0.0.1 8470
 // (From the ember server itself)
 
-#include <unistd.h>
 #include <cstdlib>
 #include <ctime>
 #include <iostream>
@@ -135,6 +134,15 @@ class Chain {
 		Sweatshop workers;
 		string global_last_hash;
 
+		udp::endpoint resolve(host_t host, string port) {
+			udp::resolver::results_type new_ep = udp_res.resolve(udp::v4(), host, port);
+			return *new_ep.begin();
+		}
+
+		udp::endpoint resolve(host_t host, port_t port) {
+			return resolve(host, std::to_string(port));
+		}
+
 		bool verify_idx(size_t idx) {
 			try {
 				Block b = chain.at(idx);
@@ -196,8 +204,7 @@ class Chain {
 
 		void add_peer(host_t host, port_t port) {
 			try {
-				udp::endpoint new_ep = *udp_res.resolve({udp::v4(), host, std::to_string(port)});
-				add_peer(new_ep);
+				add_peer(resolve(host, port));
 			} catch (const std::exception& e) {
 				log_err(e.what());
 			}
@@ -227,7 +234,7 @@ class Chain {
 		void process_gossip(const Gossip& incoming) {
 			if (sent_gossips.contains(incoming.id)) return;
 
-			udp::endpoint target = *udp_res.resolve({udp::v4(), incoming.host, std::to_string(incoming.port)});
+			udp::endpoint target = resolve(incoming.host, incoming.port);
 			GossipReply reply{my_host, my_port, my_name};
 			json reply_json = reply;
 			reply_json["type"] = "GOSSIP_REPLY";
@@ -527,7 +534,7 @@ class Chain {
 
 		// Just requests the first num blocks from the known peer and verifies them
 		void demo_get_chain(size_t num) {
-			udp::endpoint silicon = *udp_res.resolve({udp::v4(), known_hosts[0].first, known_hosts[0].second});
+			udp::endpoint silicon = resolve(known_hosts[0].first, known_hosts[0].second);
 
 			chain = std::vector<Block>(num);
 
@@ -748,13 +755,13 @@ class Chain {
 		{
 			my_host = boost::asio::ip::host_name();
 			std::cout << "Our Address: " << my_host << "\n";
-			udp::endpoint public_ep = *udp_res.resolve({udp::v4(), my_host, std::to_string(my_port)});
+			udp::endpoint public_ep = resolve(my_host, my_port);
 			my_host = public_ep.address().to_string();
 			std::cout << "Our Address: " << my_host << "\n";
 			std::cout << "Our Port: " << my_port << "\n";
 
 			for (auto host : known_hosts) {
-				udp::endpoint ep = *udp_res.resolve({udp::v4(), host.first, host.second});
+				udp::endpoint ep = resolve(host.first, host.second);
 				add_peer(ep);
 			}
 
