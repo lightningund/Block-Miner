@@ -3,11 +3,7 @@
 #include "kernel.cuh"
 #include "sha256.cuh"
 
-#ifndef COMP_CHAIN
-constexpr auto difficulty = 6;
-#else
-constexpr auto difficulty = 9;
-#endif
+constexpr auto difficulty = 8;
 constexpr auto nonce_max = 16;
 
 // Wrapper for managed memory objects
