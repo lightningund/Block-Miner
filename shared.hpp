@@ -1,3 +1,6 @@
+// Everything in this file is shared between the chain and the miners
+// So it all has to be able to compile with both the standard C++ compiler, as well as nvcc
+
 #pragma once
 #include <array>
 #include <vector>

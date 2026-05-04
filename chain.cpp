@@ -776,6 +776,8 @@ class Chain {
 		}
 };
 
+// TODO: Integrate argparse to add things like peer name, port, known hosts
+
 int main(int argc, char* argv[]) {
 	if (argc > 1) {
 		my_port = std::atoi(argv[1]);

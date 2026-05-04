@@ -76,7 +76,7 @@ string read(tcp::socket& sock) {
 }
 
 int main(int argc, char* argv[]) {
-	// test_hash();
+	test_hash();
 
 	if (argc < 2) {
 		log_err("Please give me a host idk what to do");
